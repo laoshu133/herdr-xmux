@@ -115,7 +115,7 @@ export const listMethods = {
         h_flex()
           .flex_1()
           .min_w(0)
-          .ml(-8) // Lines the pills up with the rows below.
+          .ml(-2) // Keep the pill inset aligned with the sidebar tabs.
           .gap(4)
           .items_center()
           .role("tab_list")

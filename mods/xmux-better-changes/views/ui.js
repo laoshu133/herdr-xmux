@@ -72,7 +72,7 @@ export function Panel({ id, framed = true }) {
     .bg(t.background)
     .text_color(t.foreground)
     .text_size(TEXT.body)
-    .when(framed, (el) => el.rounded(0).border_l(1).border_color(t.border));
+    .when(framed, (el) => el.rounded(0).border_t(1).border_color(t.border));
 }
 
 export function PanelHeader() {
@@ -80,8 +80,8 @@ export function PanelHeader() {
   return h_flex()
     .h(36)
     .flex_none()
-    .px(10)
-    .gap(8)
+    .px(8)
+    .gap(6)
     .items_center()
     .border_b(1)
     .border_color(t.border);
@@ -120,14 +120,14 @@ export function HeaderTab({ id, label, count, active, onClick }) {
   const t = theme();
   return h_flex()
     .id(id)
-    .h(SIZE.tab)
+    .h(30)
     .flex_none()
-    .px(10)
-    .gap(7)
+    .px(8)
+    .gap(9)
     .items_center()
-    .rounded(0)
+    .rounded(6)
     .border(0)
-    .bg(active ? t.raised : t.background)
+    .bg(active ? t.selected : t.background)
     .text_size(TEXT.menu)
     .text_color(active ? t.foreground : t.muted)
     .cursor_pointer()
@@ -159,6 +159,7 @@ export function IconButton({
     .justify_center()
     .rounded(small ? RADIUS.small : RADIUS.control)
     .text_color(t.dim)
+    .when(!disabled, (el) => el.cursor_pointer())
     .accessibility_label(label)
     .tooltip(label)
     .when(!disabled, (el) => el.hover((s) => s.bg(t.hover).text_color(t.foreground)))

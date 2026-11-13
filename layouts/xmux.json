@@ -57,6 +57,7 @@
     {
       "id": "work",
       "type": "column",
+      "gap": -1,
       "children": [
         {
           "id": "tabs-row",
@@ -155,7 +156,7 @@
                     "color": "#268bd2"
                   },
                   "radius": 0,
-                  "gap": 0,
+                  "gap": -1,
                   "lone": true
                 }
               }
@@ -231,13 +232,9 @@
     6
   ],
   "terminal_opacity": 0.9700000286102295,
-  "divider": {
-    "width": 1,
-    "color": "border"
-  },
   "titlebar": "none",
   "traffic_lights": [
     12,
-    16
+    11
   ]
 }

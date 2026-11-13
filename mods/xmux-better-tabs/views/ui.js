@@ -22,6 +22,7 @@ export function IconButton({ id, content, label, onClick }) {
     .items_center()
     .justify_center()
     .rounded(6)
+    .cursor_pointer()
     .text_color(t.dim)
     .tooltip(label)
     .accessibility_label(label)

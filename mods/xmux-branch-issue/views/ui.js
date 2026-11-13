@@ -40,13 +40,13 @@ export function Panel({ id }) {
     .text_color(t.foreground)
     .text_size(TEXT.body)
     .rounded(0)
-    .border_l(1)
+    .border_t(1)
     .border_color(t.border);
 }
 
 export function PanelHeader() {
   const t = theme();
-  return h_flex().h(36).flex_none().px(10).gap(8).items_center().border_b(1).border_color(t.border);
+  return h_flex().h(36).flex_none().px(8).gap(6).items_center().border_b(1).border_color(t.border);
 }
 
 function Badge(text) {
@@ -77,14 +77,14 @@ export function HeaderTab({
   const t = theme();
   return h_flex()
     .id(id)
-    .h(29)
+    .h(30)
     .flex_none()
-    .px(10)
-    .gap(7)
+    .px(8)
+    .gap(9)
     .items_center()
-    .rounded(0)
+    .rounded(6)
     .border(0)
-    .bg(active ? t.raised : t.background)
+    .bg(active ? t.selected : t.background)
     .text_size(TEXT.tab)
     .text_color(active ? t.foreground : disabled ? t.dim : t.muted)
     .role("tab")
@@ -114,7 +114,7 @@ export function SubTab({ id, label, count, icon, active, onClick }) {
     .mb(-1)
     .gap(6)
     .items_center()
-    .border_b(2)
+    .border_b(1)
     .border_color(active ? t.foreground : t.background)
     .text_size(TEXT.small)
     .text_color(active ? t.foreground : t.muted)

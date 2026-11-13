@@ -38,13 +38,13 @@ export function Panel({ id }) {
     .text_color(t.foreground)
     .text_size(TEXT.body)
     .rounded(0)
-    .border_l(1)
+    .border_t(1)
     .border_color(t.border);
 }
 
 export function PanelHeader() {
   const t = theme();
-  return h_flex().h(30).flex_none().px(10).gap(8).items_center().border_b(1).border_color(t.border);
+  return h_flex().h(36).flex_none().px(8).gap(6).items_center().border_b(1).border_color(t.border);
 }
 
 export function Badge(text) {

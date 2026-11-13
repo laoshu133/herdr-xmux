@@ -417,6 +417,7 @@ export class Spaces {
       .rounded(7)
       .text_size(TEXT.small)
       .text_color(t.dim)
+      .cursor_pointer()
       .hover((s) => s.bg(t.hover).text_color(t.foreground))
       .on_click(() => run("space.new", m ? { machine: m } : {}))
       .child(Icon("plus", 12))
@@ -663,6 +664,7 @@ export class Spaces {
       .flex_none()
       .justify_center()
       .rounded(8)
+      .cursor_pointer()
       .when(lit, (el) => el.bg(t.selected))
       .when(!lit, (el) => el.hover((s) => s.bg(t.hover)))
       .when(this.pressed === i && this.over !== i, (el) => el.opacity(0.5))
@@ -743,6 +745,7 @@ export class Spaces {
             .items_center()
             .justify_center()
             .text_color(t.dim)
+            .cursor_pointer()
             .tooltip("New terminal · Shift-click for more")
             .on_mouse_down("left", (_e, cx) => {
               this.pressed = null;
@@ -782,6 +785,7 @@ export class Spaces {
       .flex_none()
       .justify_center()
       .gap(4)
+      .cursor_pointer()
       .when(w.active, (el) => el.bg(t.raised))
       .hover((s) => s.bg(t.hover))
       .on_click(() => run("space.select", { id: w.id }))

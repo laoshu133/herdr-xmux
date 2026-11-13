@@ -1,8 +1,7 @@
 // One horizontally scrolling tab strip, the + after it, then the toolbar and ⋮.
 import { div, svg, image } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { spaces, panes, focused, run, openOverlay, setShared, theme, window, shared, layout, settings } from "herdr";
-import { find } from "../actions/engine.js";
+import { spaces, panes, focused, run, openOverlay, setShared, theme, window, shared } from "herdr";
 import { TEXT, Icon, IconButton, DropLine } from "./ui.js";
 import { automaticTabTitle, tabLead } from "./tab-title.js";
 
@@ -86,14 +85,17 @@ export const tabBarMethods = {
       .h(TAB_HEIGHT)
       .px(10)
       .gap(7)
-      .rounded(6)
+      .rounded(0)
       .items_center()
       .flex_none()
       .max_w(this.settings.tabs.max_width)
       .text_size(TEXT.tab)
-      .bg(tab.active ? t.selected : t.chrome)
+      .border_b(1)
+      .border_color(tab.active ? t.accent : t.chrome)
+      .bg(tab.active ? t.background : t.chrome)
       .text_color(tab.active ? t.foreground : t.muted)
-      .hover((s) => s.bg(t.hover))
+      .cursor_pointer()
+      .hover((s) => s.bg(t.hover).border_color(tab.active ? t.accent : t.hover))
       .when(drag?.active && drag.id === tab.id, (el) => el.opacity(0.35))
       .on_mouse_down("left", (event, cx) => this.beginTabDrag(tab, event, cx))
       .on_mouse_move((event, cx) => this.hoverTab(tab, event, cx))
@@ -128,17 +130,7 @@ export const tabBarMethods = {
       .when(drag?.active && drag.target?.id === tab.id, (el) =>
         el.child(DropLine(drag.target.after)),
       )
-      .when(tab.active, (el) =>
-        el.child(
-          div()
-            .absolute()
-            .left(0)
-            .right(0)
-            .bottom(0)
-            .h(1)
-            .bg(t.accent),
-        ),
-      );
+      .when(tab.active, (el) => el.mb(-1));
   },
 
   closeTabButton(tab) {
@@ -178,17 +170,6 @@ export const tabBarMethods = {
       .child(div().min_w(0).truncate().child(drag.label));
   },
 
-  // Room for the macOS traffic lights when the sidebar doesn't already clear them.
-  leftPadding() {
-    const root = layout();
-    const w = window();
-    if (w?.platform !== "macos" || w.titlebar !== "none" || w.fullscreen || !root?.traffic_lights)
-      return 10;
-    const sidebar = find(root, "sidebar");
-    const lights = (root.traffic_lights[0] + 64) / (settings().zoom || 1);
-    return Math.max(0, lights - (sidebar?.hidden ? 0 : (sidebar?.size?.px ?? 0)));
-  },
-
   render() {
     if (this.config().mode === "overflow") return this.renderOverflow();
     const t = theme();
@@ -201,8 +182,8 @@ export const tabBarMethods = {
       .min_h(BAR_HEIGHT)
       .max_h(BAR_HEIGHT)
       .min_w(0)
-      .px(10)
-      .pl(this.leftPadding())
+      .pl(0)
+      .pr(10)
       .pt(BAR_PADDING / 2)
       .gap(TAB_GAP)
       .items_start()

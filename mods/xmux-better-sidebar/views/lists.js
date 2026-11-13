@@ -33,9 +33,9 @@ export class Lists {
       .size_full()
       .min_h(0)
       .bg(t.chrome)
+      .text_size(TEXT.body)
       .border_t(1)
       .border_color(t.border)
-      .text_size(TEXT.body)
       .on_size_change((size, cx) => this.spaces.resized(size, cx));
     this.spaces.under = null;
     this.spaces.quiet = null;

@@ -278,6 +278,7 @@ export class Agents {
       .flex_none()
       .gap(0)
       .items_center()
+      .cursor_pointer()
       .text_size(12.5)
       .when(on, (el) => el.bg(t.raised))
       .hover((s) => s.bg(t.hover))
@@ -291,8 +292,7 @@ export class Agents {
             .h(17)
             .mr(4)
             .flex_none()
-            .when(Boolean(l), (el) => el.border_l(1.5).border_color(t.input))
-            .when(l === "└" || l === "├", (el) => el.border_b(1.5).rounded_bl(6)),
+            .when(l === "└" || l === "├", (el) => el.border_b(1).rounded_bl(6)),
         ),
       )
       .when(Boolean(pic), (el) => el.child(div().mr(8).child(pic)))
@@ -493,6 +493,7 @@ export class Agents {
           .id("collapse")
           .text_size(TEXT.body)
           .text_color(t.dim)
+          .cursor_pointer()
           .hover((s) => s.text_color(t.foreground))
           .on_click(toggleSidebar)
           .child("»"),
@@ -520,7 +521,7 @@ export class Agents {
       count: group.members.length,
       labelColor: t[group.status],
       folded,
-      divided: index > 0,
+      divided: false,
       action: showTop ? this.status(t, { status: top }, true) : null,
       onClick: (cx) => this.toggleFold(group.id, cx),
     });
@@ -542,6 +543,7 @@ export class Agents {
       .flex_none()
       .items_center()
       .gap(4)
+      .cursor_pointer()
       .hover((s) => s.bg(t.hover))
       .on_click(() => run("pane.focus", { pane: a.pane }))
       .child(

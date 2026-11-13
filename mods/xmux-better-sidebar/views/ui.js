@@ -109,9 +109,8 @@ export function Rail(kind, mid = 15) {
     .w(24)
     .flex_none()
     .self_stretch()
-    .when(kind === "│" || kind === "├", (el) => el.child(line().bottom(0).border_l(1.5)))
     .when(kind === "├" || kind === "└", (el) =>
-      el.child(line().h(mid).w(7).border_l(1.5).border_b(1.5).rounded_bl(6)),
+      el.child(line().h(mid).w(7).border_l(1).border_b(1).rounded_bl(6)),
     );
 }
 

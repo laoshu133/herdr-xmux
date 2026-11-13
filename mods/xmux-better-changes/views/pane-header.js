@@ -25,6 +25,7 @@ export const paneHeaderMethods = {
       .p(3)
       .rounded(4)
       .text_color(t.dim)
+      .cursor_pointer()
       .hover((s) => s.bg(t.hover).text_color(t.foreground))
       .on_click((_e, cx) => {
         cx.stop_propagation();
@@ -58,6 +59,7 @@ export const paneHeaderMethods = {
       .border_b(1)
       .border_color(t.border)
       .text_size(12)
+      .cursor_pointer()
       .on_hover((hovered, cx) => {
         this.hovered = hovered;
         cx.notify();
