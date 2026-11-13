@@ -3,7 +3,7 @@
 // without replacing what's on screen after navigation.
 import { exec } from "herdr";
 import { repositoryFromRemote, searchQuery } from "./model.js";
-import { providerFromRemote } from "./provider.js";
+import { resolveProvider } from "./provider.js";
 
 export const discoveryMethods = {
   changeSpace(sp, key, cx) {
@@ -75,9 +75,7 @@ export const discoveryMethods = {
       if (result.code !== 0) result = await remote("origin");
     }
     if (result.code !== 0) throw new Error("No GitHub or GitLab remote found for this directory.");
-    const provider = providerFromRemote(result.stdout);
-    if (!provider) throw new Error("No GitHub or GitLab remote found for this directory.");
-    return provider;
+    return resolveProvider(result.stdout, options);
   },
 
   soleBranchPR() {
@@ -184,8 +182,8 @@ export const discoveryMethods = {
         const url = await exec("git", ["remote", "get-url", name], options);
         try {
           if (url.code !== 0) throw new Error("Unavailable");
-          const provider = providerFromRemote(url.stdout);
-          return provider ? { name, repo: provider.repo, provider: provider.kind, host: provider.host } : { name, repo: null };
+          const provider = await resolveProvider(url.stdout, options);
+          return { name, repo: provider.repo, provider: provider.kind, host: provider.host };
         } catch {
           return { name, repo: null };
         }

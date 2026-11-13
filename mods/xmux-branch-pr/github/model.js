@@ -1,27 +1,16 @@
-// What GitHub's answers mean, as plain functions: no Herdr, no drawing.
+// What GitHub/GitLab answers mean, as plain functions: no Herdr, no drawing.
+import { remoteInfo } from "./provider.js";
 const pad = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
-export { providerFromRemote, providerName, providerUrl, providerProblem } from "./provider.js";
+export { providerFromRemote, resolveProvider, providerName, providerUrl, providerProblem } from "./provider.js";
 
 export const repoUrl = (repo, provider) => providerUrl(repo, provider);
 export const who = (comment) => comment?.author?.login ?? "deleted user";
 
 export function repositoryFromRemote(remote) {
-  const match =
-    /^(?:(?:https?|git|ssh):\/\/(?:[^@/]+@)?([^/:]+)(?::[0-9]+)?\/|git@([^:/]+):)(.+?)(?:\.git)?\/?$/.exec(
-      remote.trim(),
-    );
-  let host = (match?.[1] ?? match?.[2] ?? "").toLowerCase();
-  const segments = (match?.[3] ?? "").split("/");
-  // SSH aliases such as github-work name the real host only in ~/.ssh/config.
-  if (/^github(\.com)?-|^ssh\.github\.com$/.test(host)) host = "github.com";
-  const valid =
-    segments.length >= 2 &&
-    segments.every((s) => /^[A-Za-z0-9_.-]+$/.test(s) && s !== "." && s !== "..");
-  const gitlab = host === "gitlab.com" || host.includes("gitlab");
-  if ((!gitlab && host !== "github.com") || !valid)
-    throw new Error("The remote must point to a GitHub or GitLab repository.");
-  return gitlab ? segments.join("/") : segments.slice(0, 2).join("/");
+  const parsed = remoteInfo(remote);
+  if (!parsed) throw new Error("The remote does not contain a valid repository address.");
+  return parsed.repo;
 }
 
 // Text needs three characters to be worth searching; a PR number needs none of that.

@@ -1,8 +1,21 @@
-// Shared provider and issue helpers. GitHub and GitLab are detected from git remotes;
-// credentials stay in the user's gh/glab CLI login.
+// Shared provider and issue helpers. The Git remote supplies only an address;
+// authenticated local gh/glab access decides which provider is usable.
+import { exec } from "herdr";
+
 const HOST_PATTERN = /^[A-Za-z0-9.-]+$/;
 const SEGMENT_PATTERN = /^[A-Za-z0-9_.-]+$/;
+
 export function providerFromRemote(remote) {
+  const parsed = remoteInfo(remote);
+  if (!parsed) return null;
+  if (parsed.host === 'github.com' || /^github(?:\.com)?-|^ssh\.github\.com$/.test(parsed.host))
+    return { kind: 'github', host: 'github.com', repo: parsed.repo.split('/').slice(0, 2).join('/') };
+  if (parsed.host === 'gitlab.com' || parsed.host.includes('gitlab'))
+    return { kind: 'gitlab', host: parsed.host, repo: parsed.repo };
+  return null;
+}
+
+export function remoteInfo(remote) {
   const value = String(remote ?? '').trim();
   const match = /^(?:(?:https?|git|ssh):\/\/(?:[^@/]+@)?([^/:]+)(?::[0-9]+)?\/|git@([^:/]+):)(.+?)(?:\.git)?\/?$/.exec(value);
   if (!match) return null;
@@ -10,30 +23,85 @@ export function providerFromRemote(remote) {
   const path = (match[3] ?? '').replace(/^\/+|\/+$/g, '');
   const segments = path.split('/').filter(Boolean);
   if (!HOST_PATTERN.test(host) || segments.length < 2 || !segments.every((s) => SEGMENT_PATTERN.test(s))) return null;
-  if (host === 'github.com' || /^github(?:\.com)?-|^ssh\.github\.com$/.test(host)) return { kind: 'github', host: 'github.com', repo: segments.slice(0, 2).join('/') };
-  if (host === 'gitlab.com' || host.includes('gitlab')) return { kind: 'gitlab', host, repo: segments.join('/') };
-  return null;
+  return { host, path, repo: segments.join('/'), remote: value };
 }
+
+const cliOutput = (result) => `${result?.stderr || ''}\n${result?.stdout || ''}`.trim();
+const cliMissing = (text) => /command not found|not found|is not installed|no such file/i.test(text);
+const cliAuthFailure = (text) => /not logged|not authenticated|authentication required|unauthorized|forbidden|401|403|authentication failed|http 4\d\d/i.test(text);
+
+async function runCli(command, args, options) {
+  try {
+    return await exec(command, args, options);
+  } catch (error) {
+    // Herdr's exec rejects when the executable cannot be started. Treat that
+    // exactly like a non-zero CLI result so the other provider can be tried.
+    return { code: 127, stdout: '', stderr: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+function jsonRepo(stdout, kind, fallback) {
+  try {
+    const row = JSON.parse(stdout || 'null') || {};
+    const value = kind === 'github'
+      ? row.nameWithOwner
+      : row.path_with_namespace || row.name_with_namespace || row.path || row.name;
+    if (typeof value === 'string' && value.trim()) return value.trim().replace(/^\/+|\/+$/g, '').replace(/\.git$/, '');
+  } catch {
+    // Older CLI versions may return a successful response without JSON.
+  }
+  return fallback;
+}
+
+export async function resolveProvider(remote, options = {}) {
+  const parsed = remoteInfo(remote);
+  if (!parsed) throw new Error('The remote does not contain a valid repository address.');
+  const target = `${parsed.host}/${parsed.repo}`;
+  const failures = [];
+
+  const gh = await runCli('gh', ['repo', 'view', target, '--json', 'nameWithOwner'], options);
+  if (gh.code === 0) {
+    const value = jsonRepo(gh.stdout, 'github', parsed.repo);
+    return { kind: 'github', host: parsed.host, repo: value.split('/').slice(-2).join('/') };
+  }
+  const ghText = cliOutput(gh);
+  failures.push({ missing: cliMissing(ghText), auth: cliAuthFailure(ghText) });
+
+  const glab = await runCli('glab', ['repo', 'view', parsed.remote, '--output', 'json'], options);
+  if (glab.code === 0) {
+    return { kind: 'gitlab', host: parsed.host, repo: jsonRepo(glab.stdout, 'gitlab', parsed.repo) };
+  }
+  const glabText = cliOutput(glab);
+  failures.push({ missing: cliMissing(glabText), auth: cliAuthFailure(glabText) });
+
+  if (failures.every((failure) => failure.missing))
+    throw new Error('Neither gh nor glab CLI is installed. Install one and log in before opening this panel.');
+  if (failures.some((failure) => failure.auth))
+    throw new Error(`Neither authenticated gh nor glab can access ${target}. Run the matching CLI's auth login, then refresh.`);
+  throw new Error(`Neither gh nor glab could access ${target}. Check the repository address and CLI authorization.`);
+}
+
 export function repositoryFromRemote(remote) {
-  const provider = providerFromRemote(remote);
-  if (!provider) throw new Error('The remote must point to a GitHub or GitLab repository.');
-  return provider.repo;
+  const parsed = remoteInfo(remote);
+  if (!parsed) throw new Error('The remote does not contain a valid repository address.');
+  return parsed.repo;
 }
+
 export const providerName = (p) => p?.kind === 'gitlab' ? 'GitLab' : 'GitHub';
 export const providerUrl = (repo, p) => `https://${p?.host || (p?.kind === 'gitlab' ? 'gitlab.com' : 'github.com')}/${repo}`;
 export function providerProblem(message, provider) {
   const text = String(message ?? '');
-  if (/no github or gitlab remote|github or gitlab repository required|unsupported repository/i.test(text)) return {
+  if (/no github or gitlab remote|github or gitlab repository required|unsupported repository|valid repository address/i.test(text)) return {
     kind: 'unsupported', title: 'GitHub or GitLab repository required',
-    detail: 'Open a folder whose Git remote points to GitHub or GitLab. The provider is detected automatically.', command: 'git remote -v',
+    detail: 'Open a folder with a repository remote that your authenticated gh or glab CLI can access.', command: 'git remote -v',
   };
   const tool = provider?.kind === 'gitlab' ? 'glab' : 'gh';
   const name = providerName(provider);
   if (/command not found|is not installed/i.test(text)) return {
     kind: 'missing', title: `${name} CLI is not installed`, detail: `Install ${tool}, run ${tool} auth login, then try again.`, command: `${tool} auth login`, url: tool === 'glab' ? 'https://gitlab.com/gitlab-org/cli' : 'https://cli.github.com',
   };
-  if (/not logged|not authenticated|authentication required|unauthorized|401|authentication failed/i.test(text)) return {
-    kind: 'logged-out', title: `${name} CLI is not logged in`, detail: `Run ${tool} auth login in a terminal, then try again.`, command: `${tool} auth login`, url: tool === 'glab' ? 'https://gitlab.com/gitlab-org/cli' : 'https://cli.github.com',
+  if (/not logged|not authenticated|authentication required|unauthorized|401|authentication failed|neither authenticated gh nor glab/i.test(text)) return {
+    kind: 'logged-out', title: 'Git hosting CLI is not logged in', detail: "This panel verifies the repository with gh and glab using their local login state. Run the matching CLI's auth login, then try again.", command: `${tool} auth login`, url: tool === 'glab' ? 'https://gitlab.com/gitlab-org/cli' : 'https://cli.github.com',
   };
   return null;
 }

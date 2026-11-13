@@ -2,7 +2,7 @@
 // branch. A token per kind of read lets an old answer finish without replacing
 // what's on screen after navigation.
 import { exec } from "herdr";
-import { identifiersIn, searchQuery, providerFromRemote } from "./model.js";
+import { identifiersIn, searchQuery, resolveProvider } from "./model.js";
 
 // A branch name rarely carries more identifiers than this; each one costs a request.
 const MAX_BRANCH_CANDIDATES = 4;
@@ -56,20 +56,29 @@ export const discoveryMethods = {
 
   async detectProvider(sp) {
     const options = { cwd: sp.folder, on: sp.machine };
+    let lastError;
     for (const name of ["upstream", "origin"]) {
       const result = await exec("git", ["remote", "get-url", name], options);
       if (result.code === 0) {
-        const provider = providerFromRemote(result.stdout);
-        if (provider) return provider;
+        try {
+          return await resolveProvider(result.stdout, options);
+        } catch (error) {
+          lastError = error;
+          // Try the next configured remote before reporting that none is usable.
+        }
       }
     }
     const remotes = await exec("git", ["remote"], options);
     for (const name of (remotes.stdout || "").split(/\r?\n/).filter(Boolean)) {
       const result = await exec("git", ["remote", "get-url", name], options);
-      const provider = providerFromRemote(result.stdout);
-      if (provider) return provider;
+      try {
+        return await resolveProvider(result.stdout, options);
+      } catch (error) {
+        lastError = error;
+        // Try the next configured remote before reporting that none is usable.
+      }
     }
-    throw new Error("No GitHub or GitLab remote found for this directory.");
+    throw lastError ?? new Error("No GitHub or GitLab remote found for this directory.");
   },
 
   resolveProvider(cx) {
