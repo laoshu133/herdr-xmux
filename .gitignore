@@ -10,3 +10,14 @@
 *.pem
 *.p12
 *.pfx
+
+# Herdr personal settings and runtime state.
+keys.json
+settings.json
+shared.json
+seen.json
+installed.json
+view.json
+window.json
+windows.json
+programs.json
