@@ -18,7 +18,9 @@ cd ~/works/herdr-xmux
 
 `install.sh` backs up existing XMux files under
 `~/.config/herdr-app/retired/`, links the repository files into Herdr, checks
-the mods, and switches the open app to the `xmux` layout when possible.
+the mods, and switches the open app to the `xmux` layout when possible. It
+also finds the binary inside `~/Applications/Herdr.app` when the CLI is not on
+`PATH`.
 
 Keep these files in Mackup/iCloud:
 

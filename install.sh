@@ -6,6 +6,14 @@ REPO_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 STAMP=$(date +%Y%m%d-%H%M%S)
 BACKUP="$APP_HOME/retired/xmux-github-$STAMP"
 
+HERDR_BIN=${HERDR_BIN:-}
+if [ -z "$HERDR_BIN" ]; then
+  HERDR_BIN=$(command -v herdr-app 2>/dev/null || :)
+fi
+if [ -z "$HERDR_BIN" ] && [ -x "$HOME/Applications/Herdr.app/Contents/MacOS/Herdr" ]; then
+  HERDR_BIN="$HOME/Applications/Herdr.app/Contents/MacOS/Herdr"
+fi
+
 mkdir -p "$APP_HOME/layouts" "$APP_HOME/themes" "$APP_HOME/mods" "$BACKUP"
 
 backup_target() {
@@ -52,9 +60,13 @@ for mod in \
   xmux-status \
   xmux-pane-focus
 do
-  herdr-app check "$APP_HOME/mods/$mod/main.js" >/dev/null
+  if [ -n "$HERDR_BIN" ]; then
+    "$HERDR_BIN" check "$APP_HOME/mods/$mod/main.js" >/dev/null
+  fi
 done
 
-herdr-app do layout.switch '{"name":"xmux"}' >/dev/null 2>&1 || true
+if [ -n "$HERDR_BIN" ]; then
+  "$HERDR_BIN" do layout.switch '{"name":"xmux"}' >/dev/null 2>&1 || true
+fi
 printf '%s\n' "Installed XMux from $REPO_ROOT"
 printf '%s\n' "Backups: $BACKUP"
