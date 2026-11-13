@@ -33,6 +33,8 @@ export class Lists {
       .size_full()
       .min_h(0)
       .bg(t.chrome)
+      .border_t(1)
+      .border_color(t.border)
       .text_size(TEXT.body)
       .on_size_change((size, cx) => this.spaces.resized(size, cx));
     this.spaces.under = null;
@@ -99,9 +101,9 @@ export class Lists {
     const tab = (id, label, count) =>
       h_flex()
         .id(`lists-tab-${id}`)
-        .px(10)
-        .h(24)
-        .gap(5)
+        .px(8)
+        .h(30)
+        .gap(9)
         .justify_center()
         .items_center()
         .rounded(6)
@@ -117,11 +119,7 @@ export class Lists {
         .when(count !== null, (el) => el.child(Badge(count)));
     return h_flex()
       .px(8)
-      .pt(6)
-      .pb(6)
-      .mb(4)
-      .border_b(1)
-      .border_color(t.border)
+      .h(31)
       .flex_none()
       .gap(6)
       .items_center()

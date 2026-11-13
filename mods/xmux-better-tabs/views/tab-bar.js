@@ -86,14 +86,12 @@ export const tabBarMethods = {
       .h(TAB_HEIGHT)
       .px(10)
       .gap(7)
-      .rounded(0)
+      .rounded(6)
       .items_center()
       .flex_none()
       .max_w(this.settings.tabs.max_width)
       .text_size(TEXT.tab)
-      .border_b(2)
-      .border_color(tab.active ? t.accent : t.chrome)
-      .bg(tab.active ? t.background : t.chrome)
+      .bg(tab.active ? t.selected : t.chrome)
       .text_color(tab.active ? t.foreground : t.muted)
       .hover((s) => s.bg(t.hover))
       .when(drag?.active && drag.id === tab.id, (el) => el.opacity(0.35))
@@ -129,6 +127,17 @@ export const tabBarMethods = {
       .when(tab.active, (el) => el.child(this.closeTabButton(tab)))
       .when(drag?.active && drag.target?.id === tab.id, (el) =>
         el.child(DropLine(drag.target.after)),
+      )
+      .when(tab.active, (el) =>
+        el.child(
+          div()
+            .absolute()
+            .left(0)
+            .right(0)
+            .bottom(0)
+            .h(1)
+            .bg(t.accent),
+        ),
       );
   },
 
@@ -177,7 +186,7 @@ export const tabBarMethods = {
       return 10;
     const sidebar = find(root, "sidebar");
     const lights = (root.traffic_lights[0] + 64) / (settings().zoom || 1);
-    return Math.max(10, lights - (sidebar?.hidden ? 0 : (sidebar?.size?.px ?? 0)));
+    return Math.max(0, lights - (sidebar?.hidden ? 0 : (sidebar?.size?.px ?? 0)));
   },
 
   render() {
@@ -198,6 +207,8 @@ export const tabBarMethods = {
       .gap(TAB_GAP)
       .items_start()
       .bg(t.chrome)
+      .border_b(1)
+      .border_color(t.border)
       .on_size_change((size, cx) => {
         if (this.width !== size.width) {
           this.width = size.width;

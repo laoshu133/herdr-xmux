@@ -17,7 +17,7 @@
             "mod": "workspace-chrome"
           },
           "size": {
-            "px": 46
+            "px": 36
           },
           "window_drag": true
         },
@@ -147,23 +147,15 @@
                 "pane": {
                   "background": "background",
                   "border": {
-                    "width": 0,
-                    "color": "border"
+                    "width": 1,
+                    "color": "#0b5077b3"
                   },
                   "focus": {
-                    "width": 0,
-                    "color": "accent"
+                    "width": 1,
+                    "color": "#268bd2"
                   },
                   "radius": 0,
                   "gap": 0,
-                  "header": {
-                    "content": {
-                      "mod": "xmux-pane-focus"
-                    },
-                    "height": 1,
-                    "position": "top",
-                    "reveal": "always"
-                  },
                   "lone": true
                 }
               }

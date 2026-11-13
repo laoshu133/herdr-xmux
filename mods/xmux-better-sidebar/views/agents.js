@@ -621,7 +621,7 @@ export class Agents {
       .px(8)
       .h(30)
       .flex_none()
-      .rounded(8)
+      .rounded(6)
       .items_center()
       .gap(9)
       .when(lit, (el) => el.bg(t.selected))

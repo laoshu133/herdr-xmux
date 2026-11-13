@@ -637,34 +637,29 @@ export class Spaces {
     return badge;
   }
 
-  // Under the row only when the PR lookup failed; the PR itself sits at the row's right.
-  prLine(w, t, tree) {
+  // Keep a failed PR refresh on the title row so it does not create a second
+  // line or an extra divider beneath the space.
+  prError(w, t) {
     const status = this.checkoutStatus(w);
-    return h_flex()
-      .id(`space-pr-line-${w.id}`)
-      .h(20)
-      .pl(tree ? 44 : 27)
-      .items_center()
+    if (!status?.error) return null;
+    return div()
+      .flex_none()
+      .truncate()
+      .text_size(TEXT.caption)
+      .text_color(t.dim)
       .tooltip(`PR refresh failed: ${status.error}`)
-      .child(
-        div()
-          .text_size(TEXT.caption)
-          .text_color(t.dim)
-          .child(status.prs.length ? "PR may be stale" : "PR unavailable"),
-      );
+      .child(status.prs.length ? "PR may be stale" : "PR unavailable");
   }
   // ── Expanded/compact rows and sidebar rendering ──────────────────────────
 
   row({ w, i, g, tree }, t) {
-    const status = this.checkoutStatus(w);
-    const hasPRLine = Boolean(status?.error);
     // One row is lit: under the lists view, the focused agent beneath takes it.
     const lit = w.active && !this.quiet?.(w);
     const row = v_flex()
       .relative()
       .id(`space-${w.id}`)
       .px(8)
-      .h(rowHeight({ tree }) + (hasPRLine ? 22 : 0))
+      .h(rowHeight({ tree }))
       .flex_none()
       .justify_center()
       .rounded(8)
@@ -676,8 +671,7 @@ export class Spaces {
         cx.notify();
       })
       .on_mouse_down("right", () => this.menu(w))
-      .child(this.rowTitle(w, g, tree, t))
-      .when(hasPRLine, (el) => el.child(this.prLine(w, t, Boolean(tree))));
+      .child(this.rowTitle(w, g, tree, t));
     if (this.pressed !== null && this.over === i && this.pressed !== i)
       row.child(this.dropLine(i, t));
     const dragged = this.withDragging(row, w, i);
@@ -737,6 +731,7 @@ export class Spaces {
       )
       .child(this.branchName(g, w.name, t))
       .child(this.gitTail(g, w.active, t, w))
+      .when(Boolean(this.checkoutStatus(w)?.error), (el) => el.child(this.prError(w, t)))
       .when(add, (el) =>
         el.child(
           div()

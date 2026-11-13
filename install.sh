@@ -43,8 +43,7 @@ for mod in \
   xmux-branch-pr \
   xmux-branch-issue \
   xmux-new-menu \
-  xmux-status \
-  xmux-pane-focus
+  xmux-status
 do
   link_target "$REPO_ROOT/mods/$mod" "$APP_HOME/mods/$mod"
 done
@@ -57,8 +56,7 @@ for mod in \
   xmux-branch-pr \
   xmux-branch-issue \
   xmux-new-menu \
-  xmux-status \
-  xmux-pane-focus
+  xmux-status
 do
   if [ -n "$HERDR_BIN" ]; then
     "$HERDR_BIN" check "$APP_HOME/mods/$mod/main.js" >/dev/null

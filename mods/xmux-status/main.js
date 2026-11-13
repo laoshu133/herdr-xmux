@@ -22,10 +22,20 @@ export default class WorkspaceStatus extends View {
     }
     if (!ordered.length) return;
 
-    const current = focused()?.tab ?? spaces().find((space) => space.active)?.tabs.find((tab) => tab.active)?.id;
-    let index = ordered.findIndex(({ tab }) => tab.id === current);
+    const activeSpace = spaces().find((space) => space.active);
+    const activeTab = activeSpace?.tabs?.find((tab) => tab.active);
+    const focus = focused();
+    const currentSpaceId = focus?.space ?? activeSpace?.id;
+    const currentTabId = focus?.tab ?? activeTab?.id;
+    let index = ordered.findIndex(
+      ({ space, tab }) => space.id === currentSpaceId && tab.id === currentTabId,
+    );
+    if (index < 0) {
+      index = ordered.findIndex(({ space, tab }) => space.active && tab.active);
+    }
     if (index < 0) index = direction > 0 ? -1 : 0;
     const target = ordered[(index + direction + ordered.length) % ordered.length];
+    if (!target) return;
     run("space.select", { id: target.space.id });
     run("tab.select", { id: target.tab.id });
   }

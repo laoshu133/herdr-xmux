@@ -2,11 +2,11 @@
 
 XMux is a Herdr layout and mod set for a compact, terminal-first coding
 workspace. It keeps a single 36px tab row, scrolls tabs horizontally, uses
-square panel controls, and marks the active pane with a one-pixel top focus
-line. The palette is based on the user's Ghostty Solarized Dark theme and is
-used by both the Herdr chrome and terminal panes.
+square panel controls, stable one-pixel pane borders, and a clear one-pixel
+focus accent. The palette is based on the user's Ghostty Solarized Dark theme
+and is used by both the Herdr chrome and terminal panes.
 
-![XMux layout preview](docs/xmux-layout.png)
+![XMux preview](preview.png)
 
 The image is a sanitized preview of the layout. It shows the layout chrome and
 panel arrangement without including a personal workspace, repository, or
@@ -28,8 +28,8 @@ focus treatment, and colors for a personal Ghostty-like setup.
   opens the full picker.
 - Files, Changes, PRs, and Issues use compact square controls. Issues remains
   available from More actions.
-- Panes share one-pixel dividers. The active pane gets a top focus line while
-  inactive terminals are slightly softened.
+- Panes share one-pixel borders and dividers. The active pane gets a one-pixel
+  focus accent while inactive terminals are slightly softened.
 - Pane title bars are removed where the tab row already provides the context.
 - Sidebar spaces expose a quick-create action, and machines can be reordered.
 - GitHub and GitLab features use the locally authenticated `gh` and `glab`
@@ -50,11 +50,12 @@ the following mods:
 | `xmux-branch-pr` | Pull requests through authenticated GitHub or GitLab CLIs |
 | `xmux-branch-issue` | Issue workflow for the configured issue provider |
 | `xmux-new-menu` | XMux terminal and agent creation menu |
-| `xmux-pane-focus` | Active pane focus line |
 | `xmux-status` | Compact bottom status bar |
 
 `workspace-chrome` and the other built-in workspace pieces are supplied by
 Herdr itself.
+
+Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE).
 
 ## Install
 
