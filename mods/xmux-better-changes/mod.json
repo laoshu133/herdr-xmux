@@ -1,0 +1,17 @@
+{
+  "$schema": "./mod.schema.json",
+  "version": "2.4.0",
+  "place": "right",
+  "size": 368,
+  "title": "Better Changes",
+  "overlay": {
+    "kind": "popup",
+    "width": 1,
+    "height": 1,
+    "frame": "none"
+  },
+  "cloned_from": {
+    "name": "better-changes",
+    "version": "0.1.15"
+  }
+}

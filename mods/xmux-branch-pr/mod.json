@@ -1,0 +1,10 @@
+{
+  "$schema": "./mod.schema.json",
+  "version": "2.4.0",
+  "place": "none",
+  "title": "Branch PR",
+  "cloned_from": {
+    "name": "branch-pr",
+    "version": "0.1.15"
+  }
+}

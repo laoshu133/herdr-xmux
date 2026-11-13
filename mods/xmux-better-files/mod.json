@@ -1,0 +1,10 @@
+{
+  "$schema": "./mod.schema.json",
+  "version": "1.4.0",
+  "place": "none",
+  "title": "Better Files",
+  "cloned_from": {
+    "name": "better-files",
+    "version": "0.1.15"
+  }
+}
