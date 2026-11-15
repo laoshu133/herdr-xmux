@@ -413,7 +413,7 @@ export const diffMethods = {
       .font_family(codeFont())
       .text_size(codeSize())
       .child(split ? this.scrollsTogether(list) : this.scrollsSideways(list))
-      .child(Scrollbar.vertical(listId).viewport_from_layout().absolute().inset_0());
+      .child(Scrollbar.vertical(listId).mode("scrolling").viewport_from_layout().absolute().inset_0());
   },
 
   // Side by side moves both columns with one offset, keeping the line numbers still.
@@ -432,7 +432,7 @@ export const diffMethods = {
     return div()
       .id("diff-x")
       .size_full()
-      .overflow_x_scrollbar()
+      .overflow_x_scrollbar().mode("scrolling")
       .child(
         div()
           .w_full()

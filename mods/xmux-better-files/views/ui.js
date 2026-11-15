@@ -38,7 +38,8 @@ export function Panel({ id }) {
     .text_color(t.foreground)
     .text_size(TEXT.body)
     .rounded(0)
-    .border_t(1)
+    .border_t(0)
+    .border_l(1)
     .border_color(t.border);
 }
 
@@ -219,7 +220,7 @@ function MenuBody({ id, width, focus, children, onKey }) {
     .id(`${id}-menu`)
     .w(width)
     .max_h(300)
-    .overflow_y_scrollbar()
+    .overflow_y_scrollbar().mode("scrolling")
     .p(5)
     .gap(1)
     .rounded(7)

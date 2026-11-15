@@ -1,6 +1,6 @@
 // An issue: its title and numbers, its tabs, and the Overview.
 import { div } from "gpui-kit";
-import { v_flex, h_flex } from "gpui-base";
+import { v_flex, h_flex, Scrollbar } from "gpui-base";
 import { theme } from "herdr";
 import { issueStats, linkedPRs, person, workflowOrder, providerName } from "../provider/model.js";
 import { agentName } from "../actions/agents.js";
@@ -20,6 +20,10 @@ import {
   SubTab,
 } from "./ui.js";
 
+const scrollFrame = (id, content) =>
+  v_flex().relative().flex_1().min_h(0).child(content)
+    .child(Scrollbar.vertical(id).mode("scrolling").absolute().inset_0());
+
 const AGENT_COLORS = { working: "working", blocked: "blocked", done: "done" };
 
 export const detailMethods = {
@@ -34,11 +38,11 @@ export const detailMethods = {
       .flex_1()
       .min_w(0)
       .min_h(0)
-      .overflow_y_scrollbar()
+      .overflow_y_scroll()
       .p(6);
     if (this.section === "comments") this.commentsView(body, issue);
     else this.overview(body, issue);
-    root.child(body);
+    root.child(scrollFrame(`issue-detail-${issue.id}-${this.section}`, body));
     // A handoff from Actions. Docked below the scroll area: gpui-kit can only scroll a virtual list from code.
     if (this.composer && !this.composer.entry) root.child(this.dockedComposer());
     return root.child(this.footer());

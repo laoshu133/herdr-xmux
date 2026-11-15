@@ -1,6 +1,6 @@
 // The two lists, and what sits around them: messages, the footer and refresh.
 import { div } from "gpui-kit";
-import { v_flex, h_flex } from "gpui-base";
+import { v_flex, h_flex, Scrollbar } from "gpui-base";
 import { theme } from "herdr";
 import { person, stateGroups, timeAgo, providerName } from "../provider/model.js";
 import {
@@ -35,6 +35,14 @@ const STATES = [
   { id: "all", label: "All states" },
 ];
 const labelOf = (choices, id) => choices.find((c) => c.id === id)?.label ?? "";
+
+const scrollFrame = (id, content) =>
+  v_flex()
+    .relative()
+    .flex_1()
+    .min_h(0)
+    .child(content)
+    .child(Scrollbar.vertical(id).mode("scrolling").absolute().inset_0());
 
 export const listMethods = {
   // Errors, confirmations and settings problems, under whichever header is showing.
@@ -113,7 +121,6 @@ export const listMethods = {
         h_flex()
           .flex_1()
           .min_w(0)
-          .ml(-2) // Keep the pill inset aligned with the sidebar tabs.
           .gap(4)
           .items_center()
           .role("tab_list")
@@ -275,11 +282,11 @@ export const listMethods = {
       .id("issue-branch-list")
       .flex_1()
       .min_h(0)
-      .overflow_y_scrollbar()
+      .overflow_y_scroll()
       .p(6)
       .gap(2);
-    if (!this.branchIssues.length) return list.child(this.branchEmpty());
-    return list.children(this.branchIssues.map((issue) => this.issueRow(issue, t)));
+    if (!this.branchIssues.length) return scrollFrame("issue-branch-list", list.child(this.branchEmpty()));
+    return scrollFrame("issue-branch-list", list.children(this.branchIssues.map((issue) => this.issueRow(issue, t))));
   },
 
   // GitHub/GitLab does the matching, including identifiers and bare numbers.
@@ -289,7 +296,7 @@ export const listMethods = {
       .id(`issue-list-${this.listKey()}`)
       .flex_1()
       .min_h(0)
-      .overflow_y_scrollbar()
+      .overflow_y_scroll()
       .p(6);
     if (!this.items.length) list.child(Message("No matching issues."));
     stateGroups(this.items).forEach((group, i) => {
@@ -319,7 +326,7 @@ export const listMethods = {
           .text_color(t.muted)
           .child(this.loading ? "Loading…" : "+ more"),
       );
-    return list;
+    return scrollFrame(`issue-list-${this.listKey()}`, list);
   },
 
   renderList(root) {

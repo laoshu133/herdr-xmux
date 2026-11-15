@@ -28,8 +28,8 @@ focus treatment, and colors for a personal Ghostty-like setup.
   opens the full picker.
 - Files, Changes, PRs, and Issues use compact square controls. Issues remains
   available from More actions.
-- Panes share one-pixel borders and dividers. The active pane gets a one-pixel
-  focus accent while inactive terminals are slightly softened.
+- Panes use one-pixel borders with one-pixel spacing between frames. Parent dividers
+  provide the continuous sidebar, tab/body, panel, and status boundaries.
 - Pane title bars are removed where the tab row already provides the context.
 - Sidebar spaces expose a quick-create action, and machines can be reordered.
 - GitHub and GitLab features use the locally authenticated `gh` and `glab`
@@ -43,6 +43,7 @@ the following mods:
 
 | Mod | Purpose |
 | --- | --- |
+| `xmux-workspace-chrome` | XMux brand bar with a continuous one-pixel bottom rule |
 | `xmux-better-tabs` | Compact tabs, scrolling, titles, panel actions, and More actions |
 | `xmux-better-sidebar` | Spaces, agents, machines, ordering, and quick actions |
 | `xmux-better-files` | File tree and file viewer |
@@ -52,7 +53,7 @@ the following mods:
 | `xmux-new-menu` | XMux terminal and agent creation menu |
 | `xmux-status` | Compact bottom status bar |
 
-`workspace-chrome` and the other built-in workspace pieces are supplied by
+`workspace-status` and the other non-XMux workspace pieces are supplied by
 Herdr itself.
 
 Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE).

@@ -27,10 +27,9 @@ Files, Changes, PRs, and Issues are panel actions. Issues is kept in More
 actions to leave the main toolbar compact. The right panels use square corners,
 compact headers, and the same divider treatment as the rest of the layout.
 
-Panes use one-pixel borders and dividers with no pane title bar. The active pane
-is marked by a clear one-pixel accent; inactive terminal content is slightly
-softened to preserve focus without a bright four-sided frame. The tab underline
-stays above the pane focus line where they meet.
+Panes use one-pixel borders and one-pixel spacing with no pane title bar. Parent
+dividers provide the continuous outer and tab/body/status rules, while each pane
+keeps a visible frame and each right-panel root carries its own left rule.
 
 The layout uses `themes/ghostty-solarized-dark.json` for the terminal and app
 colors. Provider panels discover access through the locally authenticated
@@ -41,6 +40,7 @@ GitHub Enterprise and GitLab deployments.
 
 - `layouts/xmux.json` is the layout.
 - `themes/ghostty-solarized-dark.json` is the shared terminal and panel theme.
+- `mods/xmux-workspace-chrome` owns the XMux brand bar and its continuous bottom rule.
 - `mods/xmux-better-tabs` owns tabs and panel actions.
 - `mods/xmux-better-sidebar` owns spaces, agents, machines, and quick actions.
 - `mods/xmux-better-files` and `mods/xmux-better-changes` own the right panels.
@@ -48,8 +48,8 @@ GitHub Enterprise and GitLab deployments.
 - `mods/xmux-new-menu` and `mods/xmux-status` provide XMux-specific supporting
   UI.
 
-`workspace-chrome` and `workspace-status` are supplied by Herdr and are not
-copied into this repository.
+`workspace-status` and the remaining built-in workspace pieces are supplied by
+Herdr and are not copied into this repository.
 
 ## Installing XMux
 

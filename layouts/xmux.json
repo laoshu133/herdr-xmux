@@ -5,6 +5,11 @@
     "version": "local"
   },
   "type": "row",
+  "gap": 0,
+  "divider": {
+    "width": 1,
+    "color": "border"
+  },
   "children": [
     {
       "id": "sidebar",
@@ -14,7 +19,7 @@
           "id": "brand",
           "type": "block",
           "content": {
-            "mod": "workspace-chrome"
+            "mod": "xmux-workspace-chrome"
           },
           "size": {
             "px": 36
@@ -57,7 +62,7 @@
     {
       "id": "work",
       "type": "column",
-      "gap": -1,
+      "gap": 0,
       "children": [
         {
           "id": "tabs-row",
@@ -123,7 +128,9 @@
                       }
                     }
                   ],
-                  "defaultHidden": ["issues"]
+                  "defaultHidden": [
+                    "issues"
+                  ]
                 }
               },
               "size": {
@@ -139,6 +146,7 @@
         {
           "id": "work-body",
           "type": "row",
+          "gap": 1,
           "children": [
             {
               "id": "main",
@@ -149,15 +157,15 @@
                   "background": "background",
                   "border": {
                     "width": 1,
-                    "color": "#0b5077b3"
-                  },
-                  "focus": {
-                    "width": 1,
-                    "color": "#268bd2"
+                    "color": "border"
                   },
                   "radius": 0,
-                  "gap": -1,
-                  "lone": true
+                  "gap": 1,
+                  "lone": true,
+                  "focus": {
+                    "width": 1,
+                    "color": "border"
+                  }
                 }
               }
             },
@@ -208,8 +216,7 @@
               "max": 900
             }
           ],
-          "padding": 0,
-          "gap": 0
+          "padding": 1
         },
         {
           "id": "status",
@@ -228,8 +235,8 @@
   "background": "canvas",
   "theme": "ghostty-solarized-dark",
   "terminal_padding": [
-    10,
-    6
+    2,
+    2
   ],
   "terminal_opacity": 0.9700000286102295,
   "titlebar": "none",

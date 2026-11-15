@@ -221,7 +221,7 @@ export const viewerMethods = {
         div()
           .id("viewer-x")
           .size_full()
-          .overflow_x_scrollbar()
+          .overflow_x_scrollbar().mode("scrolling")
           .child(
             div()
               .w_full()
@@ -230,7 +230,7 @@ export const viewerMethods = {
               .child(list),
           ),
       )
-      .child(Scrollbar.vertical(listId).viewport_from_layout().absolute().inset_0());
+      .child(Scrollbar.vertical(listId).mode("scrolling").viewport_from_layout().absolute().inset_0());
   },
 
   // Only a change that replaced something has anything to open.
@@ -427,12 +427,12 @@ export const viewerMethods = {
   },
 
   previewView() {
-    return v_flex()
+    const body = v_flex()
       .id("viewer-preview")
       .flex_1()
       .min_h(0)
       .min_w(0)
-      .overflow_y_scrollbar()
+      .overflow_y_scroll()
       .px(24)
       .py(16)
       .gap(12)
@@ -443,6 +443,12 @@ export const viewerMethods = {
             : Markdown(`viewer-md-${this.viewerId}-${i}`, block.text).on_link_click((url, cx) => this.followLink(url, cx)),
         ),
       );
+    return v_flex()
+      .relative()
+      .flex_1()
+      .min_h(0)
+      .child(body)
+      .child(Scrollbar.vertical("viewer-preview").mode("scrolling").absolute().inset_0());
   },
 
   viewerActions() {

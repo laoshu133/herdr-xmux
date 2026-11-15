@@ -89,7 +89,7 @@ export const menuMethods = {
       );
     // A scroll container has no intrinsic content height in a native popup.
     // Give the popup a real size, then scroll only its flexing inner list.
-    const list = v_flex().id("actions-menu-list").flex_1().min_h(0).gap(2).overflow_y_scrollbar();
+    const list = v_flex().id("actions-menu-list").flex_1().min_h(0).gap(2).overflow_y_scrollbar().mode("scrolling");
     if (!entries.length)
       list.child(
         h_flex()

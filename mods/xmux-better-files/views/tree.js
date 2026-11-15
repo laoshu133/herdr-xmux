@@ -1,6 +1,6 @@
 // The sidebar: the folder tree, and the box for a prompt to an agent.
 import { div } from "gpui-kit";
-import { h_flex, v_flex } from "gpui-base";
+import { h_flex, v_flex, Scrollbar } from "gpui-base";
 import { openOverlay, shared, theme } from "herdr";
 import { baseName, holdsChange, TOTAL_ROWS } from "../files/model.js";
 import { viewerEntries } from "../actions/open.js";
@@ -213,7 +213,7 @@ export const treeMethods = {
     );
     if (failure) root.child(Message(failure, true));
     if (this.notice) root.child(Message(this.notice));
-    const body = v_flex().id("files-list").flex_1().min_h(0).min_w(0).overflow_y_scrollbar().p(6);
+    const body = v_flex().id("files-list").flex_1().min_h(0).min_w(0).overflow_y_scroll().p(6);
     if (!this.root) body.child(Message("Select a space to see its files."));
     else {
       const rows = [];
@@ -222,7 +222,7 @@ export const treeMethods = {
       body.children(rows);
       if (rows.length >= TOTAL_ROWS) body.child(Message(`Showing the first ${TOTAL_ROWS} rows.`));
     }
-    root.child(body);
+    root.child(v_flex().relative().flex_1().min_h(0).min_w(0).child(body).child(Scrollbar.vertical("files-list").mode("scrolling").absolute().inset_0()));
     if (this.composer) root.child(this.composerView());
     return root;
   },

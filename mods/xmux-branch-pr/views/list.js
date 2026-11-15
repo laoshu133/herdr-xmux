@@ -1,6 +1,6 @@
 // The two lists, and what sits around them: messages, the footer and refresh.
 import { div } from "gpui-kit";
-import { v_flex, h_flex } from "gpui-base";
+import { v_flex, h_flex, Scrollbar } from "gpui-base";
 import { theme } from "herdr";
 import { cardChecks, prStatus, repoUrl, timeAgo, who, providerName } from "../github/model.js";
 import {
@@ -18,6 +18,10 @@ import {
   TextButton,
   TextField,
 } from "./ui.js";
+
+const scrollFrame = (id, content) =>
+  v_flex().relative().flex_1().min_h(0).child(content)
+    .child(Scrollbar.vertical(id).mode("scrolling").absolute().inset_0());
 
 const SCOPES = [
   { id: "all", label: "All PRs" },
@@ -115,7 +119,6 @@ export const listMethods = {
         h_flex()
           .flex_1()
           .min_w(0)
-          .ml(-2) // Keep the pill inset aligned with the sidebar tabs.
           .gap(4)
           .items_center()
           .role("tab_list")
@@ -251,7 +254,7 @@ export const listMethods = {
 
   branchList(t) {
     if (!this.branchPRs.length && this.branchLoading) return Busy("Loading this branch's PRs…");
-    const list = v_flex().id("pr-branch-list").flex_1().min_h(0).overflow_y_scrollbar().p(6).gap(2);
+    const list = v_flex().id("pr-branch-list").flex_1().min_h(0).overflow_y_scroll().p(6).gap(2);
     if (!this.branchPRs.length)
       list.child(
         Message(
@@ -260,7 +263,7 @@ export const listMethods = {
             : "Check out a branch to see its pull requests.",
         ),
       );
-    return list.children(this.branchPRs.map((p) => this.prRow(p, t, p.repository ?? this.repo)));
+    return scrollFrame("pr-branch-list", list.children(this.branchPRs.map((p) => this.prRow(p, t, p.repository ?? this.repo))));
   },
 
   // The selected provider owns matching, including qualifiers where supported.
@@ -276,7 +279,7 @@ export const listMethods = {
       .id(`pr-list-${this.listKey()}`)
       .flex_1()
       .min_h(0)
-      .overflow_y_scrollbar()
+      .overflow_y_scroll()
       .p(6)
       .gap(2);
     if (!this.items.length)
@@ -295,7 +298,7 @@ export const listMethods = {
           .text_color(t.muted)
           .child(this.loading ? "Loading…" : this.moreLabel()),
       );
-    return list;
+    return scrollFrame(`pr-list-${this.listKey()}`, list);
   },
 
   renderList(root) {

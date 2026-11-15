@@ -36,6 +36,7 @@ link_target "$REPO_ROOT/layouts/xmux.json" "$APP_HOME/layouts/xmux.json"
 link_target "$REPO_ROOT/themes/ghostty-solarized-dark.json" "$APP_HOME/themes/ghostty-solarized-dark.json"
 
 for mod in \
+  xmux-workspace-chrome \
   xmux-better-tabs \
   xmux-better-sidebar \
   xmux-better-files \
@@ -49,6 +50,7 @@ do
 done
 
 for mod in \
+  xmux-workspace-chrome \
   xmux-better-tabs \
   xmux-better-sidebar \
   xmux-better-files \

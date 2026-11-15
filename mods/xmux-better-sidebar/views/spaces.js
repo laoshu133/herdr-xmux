@@ -22,6 +22,7 @@ import { spaceFolder, checkoutKey, readCheckout } from "../git/checkouts.js";
 import { loadSettings, duration } from "../settings.js";
 import { findNode } from "./find-node.js";
 import { TEXT, Icon, IconButton, Badge, Rail } from "./ui.js";
+import { scrollingScrollbar } from "./scrollbar.js";
 import { newTerminalClick } from "./new-terminal.js";
 
 const USUAL_BRANCHES = new Set(["main", "master"]);
@@ -388,6 +389,11 @@ export class Spaces {
 
   machineLoading(m) {
     const layout = machines().find((k) => k.name === m)?.layout;
+    // A loaded space list is usable even while the machine health probe is
+    // still pending. Keep the list visible instead of replacing it with an
+    // indefinite Loading row.
+    const hasShown = spaces().some((s) => (s.machine ?? null) === m && this.shown.has(s.id));
+    if (hasShown) return false;
     return (
       layout === "loading" ||
       (!layout && this.machines.some((k) => k.name === m && k.state === "connected")) ||
@@ -865,19 +871,24 @@ export class Spaces {
   }
 
   body(t, collapsed) {
-    return v_flex()
+    const list = v_flex()
       .id("spaces-list")
       .flex_1()
       .min_h(0)
       .px(8)
       .pb(14)
-      .overflow_y_scrollbar()
-      .mode("always")
+      .overflow_y_scroll()
       .on_mouse_up("left", (_e, cx) => {
         this.pressed = null;
         cx.notify();
       })
       .children(this.above?.() ?? [])
       .children(this.grouped(t, collapsed));
+    return v_flex()
+      .relative()
+      .flex_1()
+      .min_h(0)
+      .child(list)
+      .child(scrollingScrollbar("spaces-list"));
   }
 }

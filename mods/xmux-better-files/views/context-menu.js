@@ -74,7 +74,7 @@ export const contextMenuMethods = {
       .id("files-menu")
       .w_full()
       .max_h(520)
-      .overflow_y_scrollbar()
+      .overflow_y_scrollbar().mode("scrolling")
       .p(4)
       .rounded(7)
       .border_1()

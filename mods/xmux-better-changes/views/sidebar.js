@@ -1,6 +1,6 @@
 // The sidebar: its tabs, options menu, file groups and commit views.
 import { div } from "gpui-kit";
-import { v_flex, h_flex } from "gpui-base";
+import { v_flex, h_flex, Scrollbar } from "gpui-base";
 import { theme, shared, setShared } from "herdr";
 import { fileTree, timeAgo } from "../git/model.js";
 import {
@@ -36,6 +36,14 @@ const LAYOUTS = [
   { id: "inline", label: "Inline", icon: "diff-inline" },
   { id: "split", label: "Side by side", icon: "diff-split" },
 ];
+
+const scrollFrame = (id, content) =>
+  v_flex()
+    .relative()
+    .flex_1()
+    .min_h(0)
+    .child(content)
+    .child(Scrollbar.vertical(id).mode("scrolling").absolute().inset_0());
 
 export const sidebarMethods = {
   // ── Preferences ───────────────────────────────────────────────────────────
@@ -90,7 +98,6 @@ export const sidebarMethods = {
         h_flex()
           .flex_1()
           .min_w(0)
-          .ml(-2) // Keep the pill inset aligned with the sidebar tabs.
           .gap(4)
           .items_center()
           .role("tab_list")
@@ -181,8 +188,8 @@ export const sidebarMethods = {
   },
 
   renderChanges() {
-    const list = v_flex().id("changes-list").flex_1().min_h(0).overflow_y_scrollbar().p(6);
-    if (this.error) return list.child(Message(this.error, true));
+    const list = v_flex().id("changes-list").flex_1().min_h(0).overflow_y_scroll().p(6);
+    if (this.error) return scrollFrame("changes-list", list.child(Message(this.error, true)));
     const conflicts = this.files.filter((f) => f.conflict);
     const unstaged = this.files.filter((f) => f.unstaged && !f.conflict);
     const staged = this.files.filter((f) => f.staged);
@@ -205,7 +212,7 @@ export const sidebarMethods = {
     const limit = this.settings.limits.files;
     if (this.total > limit)
       list.child(Message(`Showing the first ${limit.toLocaleString()} changed files.`));
-    return v_flex().id("changes").flex_1().min_h(0).child(list).child(this.renderCommitBox());
+    return v_flex().id("changes").flex_1().min_h(0).child(scrollFrame("changes-list", list)).child(this.renderCommitBox());
   },
 
   renderCommitBox() {
@@ -450,12 +457,12 @@ export const sidebarMethods = {
   },
 
   renderHistory() {
-    const list = v_flex().id("commit-list").flex_1().min_h(0).overflow_y_scrollbar().p(6);
-    if (this.commitsError) return list.child(Message(this.commitsError, true));
+    const list = v_flex().id("commit-list").flex_1().min_h(0).overflow_y_scroll().p(6);
+    if (this.commitsError) return scrollFrame("commit-list", list.child(Message(this.commitsError, true)));
     if (!this.commits.length)
-      return list.child(
+      return scrollFrame("commit-list", list.child(
         Message(this.commitsLoading || !this.root ? "Loading history…" : "No commits yet"),
-      );
+      ));
     this.groupsDrawn = 0;
     const remote = this.committed;
     const more = this.commitsDone ? "" : "+";
@@ -468,7 +475,7 @@ export const sidebarMethods = {
         commits: this.commits,
         withMore: true,
       });
-      return list;
+      return scrollFrame("commit-list", list);
     }
     const notPulled = (n) => (n ? `${n} not pulled` : null);
     const detail = (...parts) => parts.filter(Boolean).join(" · ");
@@ -499,7 +506,7 @@ export const sidebarMethods = {
         detail: detail(head.target, notPulled(head.behind)),
         withMore: true,
       });
-      return list;
+      return scrollFrame("commit-list", list);
     }
     this.addCommits(list, {
       scope: "remote",
@@ -509,7 +516,7 @@ export const sidebarMethods = {
       detail: detail(head?.name, notPulled(this.behind)),
       withMore: true,
     });
-    return list;
+    return scrollFrame("commit-list", list);
   },
 
   addCommits(list, { scope, label, count, commits, detail, withMore = false }) {
@@ -583,13 +590,16 @@ export const sidebarMethods = {
       .min_h(0)
       .child(this.renderCommitTopRow())
       .child(
-        v_flex()
-          .id("commit-scroll")
-          .flex_1()
-          .min_h(0)
-          .overflow_y_scrollbar()
-          .child(this.renderCommitAbout())
-          .child(this.renderCommitChanges()),
+        scrollFrame(
+          "commit-scroll",
+          v_flex()
+            .id("commit-scroll")
+            .flex_1()
+            .min_h(0)
+            .overflow_y_scroll()
+            .child(this.renderCommitAbout())
+            .child(this.renderCommitChanges()),
+        ),
       );
   },
 

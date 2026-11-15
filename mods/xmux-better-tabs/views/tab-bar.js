@@ -90,12 +90,10 @@ export const tabBarMethods = {
       .flex_none()
       .max_w(this.settings.tabs.max_width)
       .text_size(TEXT.tab)
-      .border_b(1)
-      .border_color(tab.active ? t.accent : t.chrome)
       .bg(tab.active ? t.background : t.chrome)
       .text_color(tab.active ? t.foreground : t.muted)
       .cursor_pointer()
-      .hover((s) => s.bg(t.hover).border_color(tab.active ? t.accent : t.hover))
+      .hover((s) => s.bg(t.hover).border_color(tab.active ? t.accent : t.input))
       .when(drag?.active && drag.id === tab.id, (el) => el.opacity(0.35))
       .on_mouse_down("left", (event, cx) => this.beginTabDrag(tab, event, cx))
       .on_mouse_move((event, cx) => this.hoverTab(tab, event, cx))
@@ -130,7 +128,18 @@ export const tabBarMethods = {
       .when(drag?.active && drag.target?.id === tab.id, (el) =>
         el.child(DropLine(drag.target.after)),
       )
-      .when(tab.active, (el) => el.mb(-1));
+      // Draw the rule as a child so it is painted over the strip's neutral
+      // baseline.  Keeping it inside the fixed-height tab also prevents the
+      // inactive rule from disappearing when the parent baseline is present.
+      .child(
+        div()
+          .absolute()
+          .left(0)
+          .right(0)
+          .bottom(0)
+          .h(1)
+          .bg(tab.active ? t.accent : t.border),
+      );
   },
 
   closeTabButton(tab) {
@@ -188,8 +197,12 @@ export const tabBarMethods = {
       .gap(TAB_GAP)
       .items_start()
       .bg(t.chrome)
-      .border_b(1)
-      .border_color(t.border)
+      // Keep the container rule independent from tab item borders.  A parent
+      // border is painted after its children in GPUI, which hid the active
+      // tab's accent line at the shared bottom pixel.  Painting the neutral
+      // rule as the first child lets later tab items sit on top of it while
+      // keeping one continuous 1px line across the toolbar.
+      .child(div().absolute().left(0).right(0).bottom(0).h(1).bg(t.border))
       .on_size_change((size, cx) => {
         if (this.width !== size.width) {
           this.width = size.width;

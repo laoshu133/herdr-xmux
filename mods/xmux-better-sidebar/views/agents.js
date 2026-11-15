@@ -20,6 +20,7 @@ import {
 } from "herdr";
 import { findNode } from "./find-node.js";
 import { TEXT, Icon, IconButton, GroupHeader, Menu, MenuLabel, MenuOption } from "./ui.js";
+import { scrollingScrollbar } from "./scrollbar.js";
 import { automaticTabTitle, tabLead } from "./tab-title.js";
 
 // The sidebar's rail goes by its width, not a flag: dragging its edge narrows it too.
@@ -363,6 +364,13 @@ export class Agents {
       ? view.list.flatMap((a, i) => this.agentWithSubs(a, i, view, t))
       : view.groups.flatMap((group, index) => this.groupRows(group, index, view, t));
 
+    const list = v_flex()
+      .id("ag-list")
+      .flex_1()
+      .min_h(0)
+      .px(view.collapsed ? 0 : 8)
+      .overflow_y_scroll()
+      .children(rows);
     return v_flex()
       .size_full()
       .min_h(0)
@@ -372,16 +380,7 @@ export class Agents {
       .text_size(TEXT.body)
       .when(!view.collapsed && opts.heading !== false, (el) => el.child(this.heading(view.sort, t)))
       .when(view.list.length === 0 && !view.collapsed, (el) => el.child(this.emptyMessage(t)))
-      .child(
-        v_flex()
-          .id("ag-list")
-          .flex_1()
-          .min_h(0)
-          .px(view.collapsed ? 0 : 8)
-          .overflow_y_scrollbar()
-          .mode("always")
-          .children(rows),
-      )
+      .child(v_flex().relative().flex_1().min_h(0).child(list).child(scrollingScrollbar("ag-list")))
       .when(view.collapsed, (el) => el.child(this.expandRow(t)));
   }
 

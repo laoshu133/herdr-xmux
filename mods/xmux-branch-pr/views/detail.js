@@ -1,6 +1,6 @@
 // A PR: its tabs, what stands in the way of merging it, and the Overview tab.
 import { div } from "gpui-kit";
-import { v_flex, h_flex } from "gpui-base";
+import { v_flex, h_flex, Scrollbar } from "gpui-base";
 import { theme } from "herdr";
 import {
   REVIEW_STATES,
@@ -34,6 +34,10 @@ import {
   TextBox,
 } from "./ui.js";
 
+const scrollFrame = (id, content) =>
+  v_flex().relative().flex_1().min_h(0).child(content)
+    .child(Scrollbar.vertical(id).mode("scrolling").absolute().inset_0());
+
 const DECISIONS = {
   APPROVED: { label: "Approved", color: "ansi2" },
   CHANGES_REQUESTED: { label: "Changes requested", color: "ansi1" },
@@ -56,13 +60,13 @@ export const detailMethods = {
       .flex_1()
       .min_w(0)
       .min_h(0)
-      .overflow_y_scrollbar()
+      .overflow_y_scroll()
       .p(6);
     if (this.section === "checks") body.child(this.checksView(pr));
     else if (this.section === "files") this.filesView(body);
     else if (this.section === "conversation") this.conversationView(body, pr);
     else this.overview(body, pr);
-    root.child(body);
+    root.child(scrollFrame(`pr-detail-${pr.repository}-${pr.id}-${this.section}`, body));
     // A handoff of several comments. Docked below the scroll area: gpui-kit can only scroll a virtual list from code.
     if (this.composer && !this.composer.entry) root.child(this.dockedComposer());
     return root.child(this.footer());
