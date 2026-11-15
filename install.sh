@@ -15,15 +15,15 @@ if [ -z "$HERDR_BIN" ] && [ -x "$HOME/Applications/Herdr.app/Contents/MacOS/Herd
 fi
 
 # Keep installation and validation in lockstep when a mod is added or removed.
-XMUX_MODS='\
-xmux-workspace-chrome \
-xmux-better-tabs \
-xmux-better-sidebar \
-xmux-better-files \
-xmux-better-changes \
-xmux-branch-pr \
-xmux-branch-issue \
-xmux-new-menu \
+XMUX_MODS='
+xmux-workspace-chrome
+xmux-better-tabs
+xmux-better-sidebar
+xmux-better-files
+xmux-better-changes
+xmux-branch-pr
+xmux-branch-issue
+xmux-new-menu
 xmux-status'
 
 mkdir -p "$APP_HOME/layouts" "$APP_HOME/themes" "$APP_HOME/mods" "$BACKUP"
