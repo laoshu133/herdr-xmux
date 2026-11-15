@@ -215,6 +215,15 @@
               },
               "min": 280,
               "max": 900
+            },
+            {
+              "id": "work-right-gutter",
+              "type": "column",
+              "children": [],
+              "size": {
+                "px": 0.5
+              },
+              "background": "raised"
             }
           ],
           "padding": [
