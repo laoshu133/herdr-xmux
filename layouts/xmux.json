@@ -147,6 +147,7 @@
           "id": "work-body",
           "type": "row",
           "gap": 1,
+          "background": "canvas",
           "children": [
             {
               "id": "main",
@@ -216,7 +217,10 @@
               "max": 900
             }
           ],
-          "padding": 1
+          "padding": [
+            1,
+            1
+          ]
         },
         {
           "id": "status",
