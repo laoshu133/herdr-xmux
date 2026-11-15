@@ -72,7 +72,7 @@ export function Panel({ id, framed = true }) {
     .bg(t.background)
     .text_color(t.foreground)
     .text_size(TEXT.body)
-    .when(framed, (el) => el.rounded(0).border_t(1).border_b(1).border_l(1).border_color(t.border));
+    .when(framed, (el) => el.rounded(0).border_l(1).border_color(t.border));
 }
 
 export function PanelHeader() {

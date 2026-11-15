@@ -32,8 +32,6 @@ export function Panel({ id }) {
     .text_color(t.foreground)
     .text_size(TEXT.body)
     .rounded(0)
-    .border_t(1)
-    .border_b(1)
     .border_l(1)
     .border_color(t.border);
 }
