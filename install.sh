@@ -44,7 +44,7 @@ link_target() {
   ln -s "$source" "$target"
 }
 
-link_target "$REPO_ROOT/layouts/xmux.json" "$APP_HOME/layouts/xmux.json"
+link_target "$REPO_ROOT/layouts/XMux.json" "$APP_HOME/layouts/XMux.json"
 link_target "$REPO_ROOT/themes/ghostty-solarized-dark.json" "$APP_HOME/themes/ghostty-solarized-dark.json"
 
 for mod in $XMUX_MODS; do
@@ -58,7 +58,7 @@ for mod in $XMUX_MODS; do
 done
 
 if [ -n "$HERDR_BIN" ]; then
-  "$HERDR_BIN" do layout.switch '{"name":"xmux"}' >/dev/null 2>&1 || true
+  "$HERDR_BIN" do layout.switch '{"name":"XMux"}' >/dev/null 2>&1 || true
 fi
 printf '%s\n' "Installed XMux from $REPO_ROOT"
 printf '%s\n' "Backups: $BACKUP"

@@ -38,7 +38,7 @@ GitHub Enterprise and GitLab deployments.
 
 ## Files and mods
 
-- `layouts/xmux.json` is the layout.
+- `layouts/XMux.json` is the layout.
 - `themes/ghostty-solarized-dark.json` is the shared terminal and panel theme.
 - `mods/xmux-workspace-chrome` owns the XMux brand bar and its continuous bottom rule.
 - `mods/xmux-better-tabs` owns tabs and panel actions.
@@ -65,7 +65,7 @@ previous files in `~/.config/herdr-app/retired/` and runs `herdr-app check` when
 the CLI is available. Switch layouts with:
 
 ```sh
-herdr-app do layout.switch '{"name":"xmux"}'
+herdr-app do layout.switch '{"name":"XMux"}'
 ```
 
 Personal keys and settings belong in the user's own backup or sync system.
@@ -82,7 +82,7 @@ message.
 ## Done when
 
 - `herdr-app check` passes for each `mods/xmux-*` mod.
-- `layout.switch {"name":"xmux"}` opens the layout.
+- `layout.switch {"name":"XMux"}` opens the layout.
 - The tab row stays one line at narrow widths and long titles truncate.
 - The Files, Changes, PRs, and More actions controls open the expected panels.
 - A terminal started from `+` uses the active pane's working directory and is
