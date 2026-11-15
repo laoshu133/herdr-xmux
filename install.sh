@@ -14,6 +14,18 @@ if [ -z "$HERDR_BIN" ] && [ -x "$HOME/Applications/Herdr.app/Contents/MacOS/Herd
   HERDR_BIN="$HOME/Applications/Herdr.app/Contents/MacOS/Herdr"
 fi
 
+# Keep installation and validation in lockstep when a mod is added or removed.
+XMUX_MODS='\
+xmux-workspace-chrome \
+xmux-better-tabs \
+xmux-better-sidebar \
+xmux-better-files \
+xmux-better-changes \
+xmux-branch-pr \
+xmux-branch-issue \
+xmux-new-menu \
+xmux-status'
+
 mkdir -p "$APP_HOME/layouts" "$APP_HOME/themes" "$APP_HOME/mods" "$BACKUP"
 
 backup_target() {
@@ -35,31 +47,11 @@ link_target() {
 link_target "$REPO_ROOT/layouts/xmux.json" "$APP_HOME/layouts/xmux.json"
 link_target "$REPO_ROOT/themes/ghostty-solarized-dark.json" "$APP_HOME/themes/ghostty-solarized-dark.json"
 
-for mod in \
-  xmux-workspace-chrome \
-  xmux-better-tabs \
-  xmux-better-sidebar \
-  xmux-better-files \
-  xmux-better-changes \
-  xmux-branch-pr \
-  xmux-branch-issue \
-  xmux-new-menu \
-  xmux-status
-do
+for mod in $XMUX_MODS; do
   link_target "$REPO_ROOT/mods/$mod" "$APP_HOME/mods/$mod"
 done
 
-for mod in \
-  xmux-workspace-chrome \
-  xmux-better-tabs \
-  xmux-better-sidebar \
-  xmux-better-files \
-  xmux-better-changes \
-  xmux-branch-pr \
-  xmux-branch-issue \
-  xmux-new-menu \
-  xmux-status
-do
+for mod in $XMUX_MODS; do
   if [ -n "$HERDR_BIN" ]; then
     "$HERDR_BIN" check "$APP_HOME/mods/$mod/main.js" >/dev/null
   fi

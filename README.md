@@ -88,6 +88,30 @@ setup:
 Do not copy `shared.json`, `view.json`, `window.json`, `windows.json`, or
 other runtime data into this repository.
 
+### Current Herdr setup
+
+The working installation uses symlinks for the layout, theme, and XMux mods,
+so saving a repository file reloads the running Herdr window. The relevant
+personal settings currently used with XMux are:
+
+- `theme`: `ghostty-solarized-dark`, shared by the Herdr chrome and terminal.
+- `pane_scrollbars`: `false`, which hides Herdr's terminal scrollback thumb.
+  XMux's Files, Changes, PR, Issue, and sidebar lists still use Herdr's
+  `scrolling` scrollbar mode and fade their thumbs after scrolling.
+- `zoom`, font, sounds, telemetry, and appearance remain personal settings and
+  are intentionally not copied into this repository.
+
+The personal key map currently includes these XMux integrations:
+
+```text
+cmd-ctrl-up      -> xmux-status.cross-tab-prev
+cmd-ctrl-down    -> xmux-status.cross-tab-next
+cmd-r (terminal) -> send form feed, matching Ghostty
+```
+
+Keep those mappings in the Mackup/iCloud-managed `keys.json`; they are listed
+here as a usage reference and are not part of the public layout package.
+
 ## Updates
 
 ```sh
@@ -103,6 +127,20 @@ verify the layout with:
 herdr-app check mods/xmux-better-tabs/main.js
 herdr-app do layout.switch '{"name":"xmux"}'
 ```
+
+For a complete local verification, run:
+
+```sh
+python3 -m json.tool layouts/xmux.json >/dev/null
+find mods -path '*/xmux-*/*.js' -type f -print0 | xargs -0 -n1 node --check
+for mod in mods/xmux-*; do herdr-app check "$mod"; done
+herdr-app status
+```
+
+The layout keeps `terminal_padding: [2, 2]`, a 36px single-line tab row, a
+28px status bar, 1px pane frames, and a 0.5px outer gutter used only when the
+right panel is closed. These values live in `layouts/xmux.json`; personal
+settings should not be used to reproduce the geometry.
 
 ## Herdr Gallery
 
