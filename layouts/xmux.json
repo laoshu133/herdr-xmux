@@ -147,7 +147,7 @@
           "id": "work-body",
           "type": "row",
           "gap": 1,
-          "background": "canvas",
+          "background": "raised",
           "children": [
             {
               "id": "main",
