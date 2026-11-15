@@ -1,89 +1,89 @@
 # XMux
 
-XMux is a compact, terminal-first Herdr layout for a developer who works with
-multiple spaces, coding agents, and repository panels. It is inspired by
-[Estro](https://github.com/munza/herdr-mods/tree/main/estro), then reshaped
-around a Ghostty Solarized Dark palette and a single scrolling tab row.
+XMux is a compact, terminal-first Herdr layout and mod set for working across
+spaces, coding agents, split panes, and repository panels.
 
 ![XMux preview](preview.png)
 
-This recipe describes the files in this directory. The files beside it are the
-working implementation.
+A Ghostty-inspired Herdr workspace with compact tabs, split panes, and Files,
+Changes, PRs, and Issues panels.
 
-## What you see
+## Features
 
-The window is a row with a 268px sidebar and a work area. The sidebar contains
-the XMux spaces and agents list, followed by a 28px footer. The work area has a
-36px tab row, the active tab's panes, an optional 368px right panel, and a 28px
-status bar.
+- A single 36px tab row with horizontal scrolling and truncated titles.
+- Same-space tab dragging, machine ordering, and space and agent navigation.
+- `+` starts a terminal in the active pane's directory; Shift-click opens the
+  terminal and agent picker.
+- Files, Changes, PRs, and Issues panels with repository-aware actions.
+- One-pixel pane frames, split spacing, focus treatment, and continuous shell
+  boundaries.
+- A Ghostty Solarized Dark theme shared by the Herdr chrome and terminals.
+- GitHub and GitLab provider detection based on the repository remote and the
+  locally authenticated `gh` or `glab` CLI.
 
-The tab row scrolls horizontally instead of wrapping. Long titles are
-truncated, and titles are derived from the active pane so a terminal can show
-its current working directory. Its plus action starts a terminal in the active
-tab's current directory and appends it to the end; Shift-click opens the
-terminal and agent picker.
+## Layout
 
-Files, Changes, PRs, and Issues are panel actions. Issues is kept in More
-actions to leave the main toolbar compact. The right panels use square corners,
-compact headers, and the same divider treatment as the rest of the layout.
+The window has a 268px sidebar, a 36px tab row, the active tab's panes, an
+optional 368px right panel, and a 28px status bar. The sidebar contains spaces,
+agents, machines, and quick actions.
 
-Panes use one-pixel borders and one-pixel spacing with no pane title bar. Parent
-dividers provide the continuous outer and tab/body/status rules, while each pane
-keeps a visible frame and each right-panel root carries its own left rule.
+The layout uses `terminal_padding: [2, 2]`, one-pixel pane frames and split
+spacing, a 0.5px outer gutter when the right panel is closed, and the
+`ghostty-solarized-dark` theme. Panel roots keep their left rule while the
+shared shell, tab, and status boundaries remain continuous.
 
-The layout uses `themes/ghostty-solarized-dark.json` for the terminal and app
-colors. Provider panels discover access through the locally authenticated
-`gh` or `glab` CLI and the repository remote, which also supports private
-GitHub Enterprise and GitLab deployments.
+## Included files
 
-## Files and mods
+| Path | Purpose |
+| --- | --- |
+| `layouts/XMux.json` | The XMux window layout. |
+| `themes/ghostty-solarized-dark.json` | Shared terminal and app theme. |
+| `mods/xmux-workspace-chrome` | Brand bar and window chrome. |
+| `mods/xmux-better-tabs` | Tabs, scrolling, titles, and panel actions. |
+| `mods/xmux-better-sidebar` | Spaces, agents, machines, and quick actions. |
+| `mods/xmux-better-files` | File tree and file viewer. |
+| `mods/xmux-better-changes` | Changes, staging, commits, and diffs. |
+| `mods/xmux-branch-pr` | Pull request workflow. |
+| `mods/xmux-branch-issue` | Issue workflow. |
+| `mods/xmux-new-menu` | Terminal and agent creation menu. |
+| `mods/xmux-status` | Bottom status bar and XMux commands. |
 
-- `layouts/XMux.json` is the layout.
-- `themes/ghostty-solarized-dark.json` is the shared terminal and panel theme.
-- `mods/xmux-workspace-chrome` owns the XMux brand bar and its continuous bottom rule.
-- `mods/xmux-better-tabs` owns tabs and panel actions.
-- `mods/xmux-better-sidebar` owns spaces, agents, machines, and quick actions.
-- `mods/xmux-better-files` and `mods/xmux-better-changes` own the right panels.
-- `mods/xmux-branch-pr` and `mods/xmux-branch-issue` own repository workflows.
-- `mods/xmux-new-menu` and `mods/xmux-status` provide XMux-specific supporting
-  UI.
+Herdr supplies the remaining workspace pieces, including its built-in status
+and terminal components.
 
-`workspace-status` and the remaining built-in workspace pieces are supplied by
-Herdr and are not copied into this repository.
-
-## Installing XMux
-
-From an empty Herdr configuration, read `~/.config/herdr-app/AGENTS.md`, then
-install the repository with:
+## Install
 
 ```sh
+git clone https://github.com/laoshu133/herdr-xmux.git ~/works/herdr-xmux
+cd ~/works/herdr-xmux
 ./install.sh
 ```
 
-The installer links the layout, theme, and all `xmux-*` mods. It keeps any
-previous files in `~/.config/herdr-app/retired/` and runs `herdr-app check` when
-the CLI is available. Switch layouts with:
+The installer links the layout, theme, and XMux mods into
+`~/.config/herdr-app`, backs up replaced XMux files under `retired/`, checks
+the mods, and switches the running app to the `XMux` layout. Set
+`HERDR_APP_HOME` for another configuration directory or `HERDR_BIN` when
+`herdr-app` is not on `PATH`.
+
+Keep personal `keys.json`, `settings.json`, machine connections, and runtime
+state outside this repository. Mackup/iCloud can sync those files separately.
+
+## Provider setup
+
+The PR and Issue mods inspect the repository remote and then use the matching
+authenticated `gh` or `glab` CLI. This supports GitHub Enterprise and GitLab
+deployments without hard-coding a public host.
+
+## Local verification
 
 ```sh
+python3 -m json.tool layouts/XMux.json >/dev/null
+find mods -path '*/xmux-*/*.js' -type f -print0 | xargs -0 -n1 node --check
+for mod in mods/xmux-*; do herdr-app check "$mod"; done
 herdr-app do layout.switch '{"name":"XMux"}'
+herdr-app status
 ```
 
-Personal keys and settings belong in the user's own backup or sync system.
-They are deliberately absent from this layout package.
-
-## Provider requirements
-
-The PR and issue mods do not treat the public GitHub hostname as the provider
-check. They inspect the repository remote and the local authenticated `gh` or
-`glab` CLI. Install and authenticate the CLI that matches the repository host;
-the mods then show the corresponding provider state or a useful missing-access
-message.
-
-## Done when
-
-- `herdr-app check` passes for each `mods/xmux-*` mod.
-- `layout.switch {"name":"XMux"}` opens the layout.
-- The tab row stays one line at narrow widths and long titles truncate.
-- The Files, Changes, PRs, and More actions controls open the expected panels.
-- A terminal started from `+` uses the active pane's working directory and is
-  appended at the end of the tab list.
+The tab row stays on one line with horizontal scrolling, long titles truncate,
+the panel actions open their expected views, and `+` starts a terminal in the
+active pane's directory.
