@@ -72,6 +72,23 @@ const sortOf = () => SORTS.find((s) => s.id === shared("agents.sort")) ?? SORTS[
 const SECTION = { 4: "Needs you", 3: "Done", 2: "Working", 1: "Idle" };
 const SECTION_STATUS = { 4: "blocked", 3: "done", 2: "working" };
 
+// Herdr's tab.move index is one-based and describes the insertion point after
+// the dragged tab has been removed. Keep this calculation local to the
+// sidebar so it can reorder the same-space tabs without coupling mods.
+function tabMoveIndex(tabs, sourceID, targetID, after) {
+  const from = tabs.findIndex((tab) => tab.id === sourceID);
+  const target = tabs.findIndex((tab) => tab.id === targetID);
+  if (from < 0 || target < 0) return null;
+  const boundary = target + (after ? 1 : 0);
+  const destination = boundary - (from < boundary ? 1 : 0);
+  return destination === from ? null : destination + 1;
+}
+
+// Sidebar rows are compact and the pointer often crosses the next row quickly;
+// distance alone is enough to distinguish a drag from a click here.
+const TAB_DRAG_DELAY_MS = 0;
+const TAB_DRAG_DISTANCE = 8;
+
 // PR-12, INS-4 and PLAT-work, also after a folder such as feature/INS-4: capitals
 // need nothing more, while lower case needs a number so herdr-mods is no prefix.
 const PREFIX = /(?:^|\/)(?:([A-Z][A-Z0-9]*)-\S|([A-Za-z][A-Za-z0-9]*)-\d)/;
@@ -148,6 +165,8 @@ export class Agents {
     this.sortOpen = false;
     this.sortFocus = cx.focus_handle();
     this.folded = new Set();
+    this.tabDrag = null;
+    this.tabRows = new Map();
     // Each agent's last state and when it changed (ms), kept across restarts.
     this.changed = JSON.parse(localStorage.getItem("changed") ?? "{}");
     this.pins = JSON.parse(localStorage.getItem("pins") ?? "[]");
@@ -570,7 +589,15 @@ export class Agents {
     const when = this.since(a);
     // An agent on another machine (`vps/t7`) says which.
     const machine = a.address.includes("/") ? a.address.split("/")[0] : null;
-    return h_flex()
+    const tabSpace = spaces().find((candidate) =>
+      (candidate.tabs ?? []).some((item) => item.id === a.tab),
+    );
+    const tab = tabSpace?.tabs?.find((candidate) => candidate.id === a.tab);
+    const space = tabSpace ?? spaces().find((candidate) => candidate.id === a.space);
+    // An agent row represents its tab whenever it is shown. Make that row
+    // draggable too, otherwise tabs containing agents have no tab row.
+    const dragEnabled = Boolean(tab && space);
+    const row = h_flex()
       .id(`ag-${a.address}`)
       .px(8)
       .h(30)
@@ -578,15 +605,28 @@ export class Agents {
       .rounded(8)
       .items_center()
       .gap(9)
+      .when(dragEnabled, (el) => el.relative())
       .when(a.focused, (el) => el.bg(t.selected))
-      .cursor_pointer()
+      .when(this.tabDrag?.active && this.tabDrag.id === tab?.id, (el) => el.opacity(0.45))
+      .when(this.tabDrag?.active && dragEnabled, (el) => el.cursor_grab())
+      .when(!this.tabDrag?.active, (el) => el.cursor_pointer())
       .hover((s) => s.bg(t.hover))
       .on_hover((on, cx) => {
         if (on) this.hovered = a.address;
         else if (hovered) this.hovered = null;
+        if (dragEnabled) this.hoverTabRow(space, tab, on, cx);
         cx.notify();
       })
-      .on_click(() => run("pane.focus", { pane: a.pane }))
+      .on_click(() => {
+        if (Date.now() < (this.ignoreTabClickUntil ?? 0)) return;
+        run("pane.focus", { pane: a.pane });
+      })
+      .when(dragEnabled, (el) =>
+        el
+          .on_mouse_down("left", (event, cx) => this.beginTabDrag(space, tab, event, cx))
+          .on_mouse_move((event, cx) => this.hoverTab(space, tab, event, cx))
+          .on_mouse_up("left", (event, cx) => this.finishTabDrag(space, tab, event, cx)),
+      )
       .when(Boolean(pic), (el) => el.child(this.agentIcon(a, pic, subs)))
       .child(this.agentName(a, view, t))
       .when(Boolean(machine), (el) =>
@@ -604,6 +644,9 @@ export class Agents {
         ),
       )
       .child(this.status(t, a, view.byPriority && !this.pins.includes(a.address)));
+    if (dragEnabled && this.tabDrag?.active && this.tabDrag.target?.id === tab.id && this.tabDrag.id !== tab.id)
+      row.child(this.tabDropLine(this.tabDrag.target.after, t));
+    return row;
   }
 
   // A tab with no agent, under its space in the lists view: its program and its name.
@@ -617,7 +660,7 @@ export class Agents {
     const modIcon = shared("mod-icons")?.[panes().find((p) => p.tab === tab.id && p.mod)?.mod];
     const pic =
       icon(l?.program, 16, t.dim) ?? (modIcon ? svg(modIcon).size(16).flex_none().text_color(t.dim) : null);
-    return h_flex()
+    const row = h_flex()
       .id(`tab-${tab.id}`)
       .px(8)
       .h(30)
@@ -625,13 +668,16 @@ export class Agents {
       .rounded(6)
       .items_center()
       .gap(9)
+      .relative()
       .when(lit, (el) => el.bg(t.selected))
-      .cursor_pointer()
+      .when(this.tabDrag?.active && this.tabDrag.id === tab.id, (el) => el.opacity(0.45))
+      .when(this.tabDrag?.active, (el) => el.cursor_grab())
+      .when(!this.tabDrag?.active, (el) => el.cursor_pointer())
       .hover((s) => s.bg(t.hover))
-      .on_click(() => {
-        run("space.select", { id: w.id });
-        run("tab.select", { id: tab.id });
-      })
+      .on_mouse_down("left", (event, cx) => this.beginTabDrag(w, tab, event, cx))
+      .on_mouse_move((event, cx) => this.hoverTab(w, tab, event, cx))
+      .on_mouse_up("left", (event, cx) => this.finishTabDrag(w, tab, event, cx))
+      .on_hover((hovered, cx) => this.hoverTabRow(w, tab, hovered, cx))
       .child(pic ?? div().w(16).flex_none())
       .child(
         h_flex()
@@ -642,6 +688,148 @@ export class Agents {
           .child(div().min_w(0).truncate().text_color(lit ? t.foreground : t.muted).child(name))
           .when(Boolean(prog) && prog !== name, (el) => el.child(this.programName(prog, t))),
       );
+    if (this.tabDrag?.active && this.tabDrag.target?.id === tab.id && this.tabDrag.id !== tab.id)
+      row.child(this.tabDropLine(this.tabDrag.target.after, t));
+    return row;
+  }
+
+  tabDropLine(after, t) {
+    return div()
+      .absolute()
+      .left(0)
+      .right(0)
+      .h(2)
+      .bg(t.accent)
+      .when(after, (line) => line.bottom(0))
+      .when(!after, (line) => line.top(0));
+  }
+
+  tabDragReady(drag, point) {
+    return (
+      Date.now() - drag.pressedAt >= TAB_DRAG_DELAY_MS &&
+      Math.hypot(point.x - drag.start.x, point.y - drag.start.y) >= TAB_DRAG_DISTANCE
+    );
+  }
+
+  beginTabDrag(space, tab, event, cx) {
+    // Keep the press on the tab row while the pointer crosses sibling rows.
+    // This is the same propagation boundary used by Herdr's shipped tab bar.
+    cx.stop_propagation();
+    const point = event.position ?? { x: 0, y: 0 };
+    this.tabDrag = {
+      id: tab.id,
+      space: space.id,
+      start: point,
+      point,
+      pressedAt: Date.now(),
+      active: false,
+      target: null,
+    };
+    this.tabRows.clear();
+    this.rememberTabRow(space, tab, event);
+    cx.notify();
+  }
+
+  hoverTab(space, tab, event, cx) {
+    this.rememberTabRow(space, tab, event);
+    const drag = this.tabDrag;
+    if (!drag || drag.space !== space.id) return;
+    const point = event.position ?? drag.point;
+    drag.point = point;
+    drag.active ||= this.tabDragReady(drag, point);
+    if (!drag.active) return;
+    const bounds = event.bounds;
+    const localY = event.local_position?.y ?? 0;
+    const after = bounds ? localY > bounds.height / 2 : false;
+    const target = drag.id === tab.id ? null : { id: tab.id, after };
+    if (!drag.target || drag.target.id !== target?.id || drag.target.after !== target?.after) {
+      drag.target = target;
+      cx.notify();
+    }
+  }
+
+  rememberTabRow(space, tab, event) {
+    if (!event?.bounds || !space || !tab) return;
+    this.tabRows.set(tab.id, { space: space.id, bounds: event.bounds });
+  }
+
+  // GPUI can keep mouse-move delivery on the pressed row while the pointer
+  // crosses the scroll list. The list container still sees the window point;
+  // use the row bounds observed during hover to update the drop target.
+  moveTabDrag(event, cx) {
+    const drag = this.tabDrag;
+    if (!drag) return;
+    const point = event.position ?? drag.point;
+    drag.point = point;
+    drag.active ||= this.tabDragReady(drag, point);
+    if (!drag.active) return;
+    let target = null;
+    for (const [id, row] of this.tabRows) {
+      if (row.space !== drag.space || id === drag.id) continue;
+      const b = row.bounds;
+      if (!b || point.y < b.y || point.y > b.y + b.height) continue;
+      target = { id, after: point.y > b.y + b.height / 2 };
+      break;
+    }
+    if (!target || drag.target?.id !== target.id || drag.target.after !== target.after) {
+      drag.target = target;
+      cx.notify();
+    }
+  }
+
+  // Hover is a fallback for compact rows: GPUI can keep mouse-move delivery
+  // on the pressed row while the pointer crosses a sibling row.
+  hoverTabRow(space, tab, hovered, cx) {
+    const drag = this.tabDrag;
+    if (!hovered || !drag || drag.space !== space.id || drag.id === tab.id) return;
+    drag.active = true;
+    const current = spaces().find((candidate) => candidate.id === space.id);
+    const from = current?.tabs?.findIndex((candidate) => candidate.id === drag.id) ?? -1;
+    const target = current?.tabs?.findIndex((candidate) => candidate.id === tab.id) ?? -1;
+    if (from < 0 || target < 0) return;
+    const next = { id: tab.id, after: from < target };
+    if (!drag.target || drag.target.id !== next.id || drag.target.after !== next.after) {
+      drag.target = next;
+      cx.notify();
+    }
+  }
+
+  finishTabDrag(space, tab, event, cx) {
+    const drag = this.tabDrag;
+    if (!drag) return;
+    cx.stop_propagation();
+    this.hoverTab(space, tab, event, cx);
+    this.commitTabDrag(cx, tab.id, space.id);
+  }
+
+  // The scroll viewport also receives a release when the pointer leaves the
+  // pressed row. Commit there as a fallback; a row release has already cleared
+  // the state, so this is a no-op in the normal path.
+  commitTabDrag(cx, clickedID = null, spaceID = null) {
+    const drag = this.tabDrag;
+    if (!drag) return;
+    this.tabDrag = null;
+    this.tabRows.clear();
+    const current = spaces().find((candidate) => candidate.id === drag.space);
+    const target = current && (!spaceID || current.id === spaceID) ? drag.target : null;
+    if (current && target) {
+      const index = tabMoveIndex(current.tabs ?? [], drag.id, target.id, target.after);
+      if (index !== null) {
+        run("tab.move", { id: drag.id, index });
+        this.ignoreTabClickUntil = Date.now() + 300;
+      }
+    } else if (!drag.active && clickedID && current) {
+      run("space.select", { id: current.id });
+      run("tab.select", { id: clickedID });
+    }
+    cx.notify();
+  }
+
+  cancelTabDrag(cx) {
+    if (!this.tabDrag) return;
+    this.tabDrag = null;
+    this.tabRows.clear();
+    cx.notify();
   }
 
   // The program, quietly after a row's name under its space.

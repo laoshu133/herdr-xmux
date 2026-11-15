@@ -79,6 +79,8 @@ export class Spaces {
     this.born = {};
     this.pressed = null;
     this.over = null;
+    this.pressedPosition = null;
+    this.dragMoved = false;
     this.hoverMachine = undefined;
     this.machineDrag = null;
     try {
@@ -673,14 +675,14 @@ export class Spaces {
       .cursor_pointer()
       .when(lit, (el) => el.bg(t.selected))
       .when(!lit, (el) => el.hover((s) => s.bg(t.hover)))
-      .when(this.pressed === i && this.over !== i, (el) => el.opacity(0.5))
+      .when(this.pressed === w.id && this.over !== w.id, (el) => el.opacity(0.5))
       .on_hover((hovered, cx) => {
         this.hoverSpace = hovered ? w.id : null;
         cx.notify();
       })
       .on_mouse_down("right", () => this.menu(w))
       .child(this.rowTitle(w, g, tree, t));
-    if (this.pressed !== null && this.over === i && this.pressed !== i)
+    if (this.pressed !== null && this.over === w.id && this.pressed !== w.id)
       row.child(this.dropLine(i, t));
     const dragged = this.withDragging(row, w, i);
     // Nested under the lists view, a worktree hangs from its main space's line.
@@ -696,20 +698,24 @@ export class Spaces {
       .right(0)
       .h(2)
       .bg(t.accent)
-      .when(this.pressed < i, (line) => line.bottom(0))
-      .when(this.pressed > i, (line) => line.top(0));
+      .when(this.pressedPosition < i, (line) => line.bottom(0))
+      .when(this.pressedPosition > i, (line) => line.top(0));
   }
 
   // Press to select or start a drag; spaces only move within their machine.
   withDragging(row, w, i) {
     return row
       .on_mouse_down("left", () => {
-        this.pressed = i;
-        this.over = i;
+        this.pressed = w.id;
+        this.over = w.id;
+        this.pressedPosition = i;
+        this.dragMoved = false;
       })
       .on_mouse_move((_e, cx) => {
-        const source = spaces()[this.pressed];
-        const over = source && (source.machine ?? null) === (w.machine ?? null) ? i : null;
+        if (this.pressed === null) return;
+        const source = spaces().find((space) => space.id === this.pressed);
+        const over = source && (source.machine ?? null) === (w.machine ?? null) ? w.id : null;
+        if (w.id !== this.pressed) this.dragMoved = true;
         if (this.pressed !== null && this.over !== over) {
           this.over = over;
           cx.notify();
@@ -718,11 +724,19 @@ export class Spaces {
       .on_mouse_up("left", (_e, cx) => {
         const from = this.pressed;
         const over = this.over;
+        const moved = this.dragMoved;
         this.pressed = null;
         this.over = null;
-        if (from !== null && over === i && from !== i)
-          run("space.move", { id: spaces()[from].id, index: i + 1 });
-        else if (from === i) run("space.select", { id: w.id });
+        this.pressedPosition = null;
+        this.dragMoved = false;
+        const source = from === null ? null : spaces().find((space) => space.id === from);
+        const sameMachine = source && (source.machine ?? null) === (w.machine ?? null);
+        if (from !== null && over === w.id && from !== w.id && sameMachine) {
+          // `space.move` uses a one-based position in the source machine's
+          // space order. Using the live target id avoids stale render indexes.
+          const targetIndex = spaces().findIndex((space) => space.id === w.id);
+          if (targetIndex !== -1) run("space.move", { id: from, index: targetIndex + 1 });
+        } else if (from === w.id && !moved) run("space.select", { id: w.id });
         cx.notify();
       });
   }
@@ -785,8 +799,9 @@ export class Spaces {
 
   compact({ w, i }, t) {
     const badge = this.prBadge(w, t, true);
-    return h_flex()
+    const row = h_flex()
       .id(`space-${w.id}`)
+      .relative()
       .h(26)
       .flex_none()
       .justify_center()
@@ -794,14 +809,18 @@ export class Spaces {
       .cursor_pointer()
       .when(w.active, (el) => el.bg(t.raised))
       .hover((s) => s.bg(t.hover))
-      .on_click(() => run("space.select", { id: w.id }))
+      .when(this.pressed === w.id && this.over !== w.id, (el) => el.opacity(0.5))
       .child(
         div()
           .text_color(w.active ? t.foreground : t.muted)
           .child(String(i + 1)),
       )
       .when(Boolean(badge), (el) => el.child(badge))
-      .when(!badge, (el) => el.child(div().text_color(tone(t, w.status)).child(glyph(w.status))));
+      .when(!badge, (el) => el.child(div().text_color(tone(t, w.status)).child(glyph(w.status))))
+      .when(this.pressed !== null && this.over === w.id && this.pressed !== w.id, (el) =>
+        el.child(this.dropLine(i, t)),
+      );
+    return this.withDragging(row, w, i);
   }
 
   // Share avatar colors with Herdr's own space menus. Do this during data
@@ -880,6 +899,9 @@ export class Spaces {
       .overflow_y_scroll()
       .on_mouse_up("left", (_e, cx) => {
         this.pressed = null;
+        this.over = null;
+        this.pressedPosition = null;
+        this.dragMoved = false;
         cx.notify();
       })
       .children(this.above?.() ?? [])

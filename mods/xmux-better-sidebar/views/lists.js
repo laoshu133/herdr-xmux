@@ -34,6 +34,9 @@ export class Lists {
       .min_h(0)
       .bg(t.chrome)
       .text_size(TEXT.body)
+      .on_mouse_move((event, cx) => this.agents.moveTabDrag(event, cx))
+      .on_mouse_up("left", (_event, cx) => this.agents.commitTabDrag(cx))
+      .on_mouse_down_out((_event, cx) => this.agents.cancelTabDrag(cx))
       .on_size_change((size, cx) => this.spaces.resized(size, cx));
     this.spaces.under = null;
     this.spaces.quiet = null;
