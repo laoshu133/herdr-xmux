@@ -13,7 +13,7 @@
 // files/model.js says what the data means; views/ui.js holds every look.
 import { View } from "gpui-kit";
 import { TextareaState } from "gpui-base";
-import { appHome, exec, nextCommand, props, setShared, shared, spaces } from "herdr";
+import { appHome, exec, hc, nextCommand, props, setShared, shared, spaces, readTextFile, writeTextFile } from "herdr";
 import { loadSettings, duration } from "./settings.js";
 import { followFileIcons } from "./files/file-icons.js";
 import { readMethods } from "./files/reads.js";
@@ -24,6 +24,8 @@ import { menuMethods } from "./actions/menus.js";
 import { treeMethods } from "./views/tree.js";
 import { viewerMethods } from "./views/viewer.js";
 import { contextMenuMethods } from "./views/context-menu.js";
+import { createImages } from "./preview/images.js";
+import { createDiagrams } from "./preview/diagrams.js";
 
 const DEFAULT_SETTINGS = { refresh: { tree: "10s", file: "2s" }, editors: [], gutter: true, markdown: "preview" };
 const SYNC_MS = 300;
@@ -56,7 +58,22 @@ class XmuxFiles extends View {
     this.markdownDefault = DEFAULT_SETTINGS.markdown;
     this.hunks = [];
     this.openHunks = new Set();
+    this.imageZoom = 1;
+    this.wrap = shared("xmux-files.wrap") ?? false;
+    this.imageLoader = createImages({ exec, hc, appHome: () => appHome() });
+    this.diagramLoader = createDiagrams({
+      exec,
+      readTextFile,
+      writeFile: (path, text) => writeTextFile(path, text, null),
+      mkdir: (path) => exec("mkdir", ["-p", path], { on: null }),
+      unlink: (path) => exec("rm", ["-f", "--", path], { on: null }),
+      appHome,
+      now: Date.now,
+    });
+    this.file = p.file;
+    this.readFile(cx);
     this.syncViewer(cx);
+    this.renderMermaid(cx);
     cx.timer.every(SYNC_MS, (cx) => this.syncViewer(cx));
     cx.spawn(async (cx) => {
       const { settings } = await loadSettings("xmux-files", DEFAULT_SETTINGS);
@@ -100,12 +117,6 @@ class XmuxFiles extends View {
     cx.spawn(async (cx) => {
       for (;;) if ((await nextCommand()) === "refresh") this.refresh(cx);
     });
-  }
-
-  // A closing tab takes its copies of images with it.
-  async close() {
-    const copies = [this.imageCopy, ...(this.markdownCopies?.values() ?? [])].filter(Boolean);
-    if (copies.length) await exec("rm", ["-f", "--", ...copies.map((c) => `${appHome()}/${c}`)], {}).catch(() => {});
   }
 
   // Keeps up with the focused pane, tabs closing, and questions left by the menu.

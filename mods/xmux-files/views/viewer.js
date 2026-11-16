@@ -2,7 +2,7 @@
 // belongs in the code editor it can open.
 import { div, image } from "gpui-kit";
 import { h_flex, v_flex, Editor, EditorState, Scrollbar, v_virtual_list } from "gpui-base";
-import { appHome, exec, focused, layout, panes, readTextFile, setShared, shared, theme } from "herdr";
+import { exec, focused, layout, panes, readTextFile, setShared, theme } from "herdr";
 import {
   baseName,
   buildRows,
@@ -10,6 +10,7 @@ import {
   hunkKey,
   isImage,
   isMarkdown,
+  isSvg,
   languageOf,
   markdownBlocks,
   parentOf,
@@ -28,9 +29,7 @@ const LINE_COLUMNS = 6; // The number column and a margin, in the same units.
 const rowHeight = () => Math.round(codeSize() * 1.6);
 const REMOVED_ROW = 8;
 
-// $1 the file, $2 its copy, $3 the copy of what this tab showed before. No file name reaches
-// the script itself, and only the cache's own copies are ever removed.
-const COPY_IMAGE = `[ -z "$3" ] || rm -f -- "$3"; mkdir -p -- "$(dirname -- "$2")" && { cmp -s -- "$1" "$2" || cp -- "$1" "$2"; }`;
+const ZOOMS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3];
 
 export const viewerMethods = {
   // What this tab shows: the registry, then what it was opened with, after a restart.
@@ -66,10 +65,12 @@ export const viewerMethods = {
       this.code = null;
       this.hunks = [];
       this.openHunks = new Set();
+      this.imageZoom = 1;
       this.readFile(cx);
       this.readHunks(cx);
       cx.notify();
     }
+    this.renderMermaid(cx);
     this.publishHead();
   },
 
@@ -101,9 +102,11 @@ export const viewerMethods = {
 
   // Only a real change touches the view, so the place you're reading stays put.
   readFile(cx) {
-    const file = this.file;
+    const file = this.viewerFile ?? this.file;
     if (file && isImage(file.path)) return this.readImage(cx);
+    if (isSvg(file.path) && this.markdownView() === "code") this.imageShown = null;
     if (!file || this.reading) return;
+    if (isSvg(file.path) && this.markdownView() === "code") this.text = undefined;
     this.reading = true;
     cx.spawn(async (cx) => {
       let shown;
@@ -122,12 +125,13 @@ export const viewerMethods = {
       } else if (shown.text !== this.text) {
         this.problem = null;
         this.text = shown.text;
-        if (!this.gutterOn) {
+        if (!this.gutterOn || this.wrap) {
           if (this.code) this.code.set_value(shown.text);
           else this.code = this.newCode(file, shown.text);
         }
       }
       this.readMarkdownImages(cx);
+      this.renderMermaid(cx);
       cx.notify();
     });
   },
@@ -138,6 +142,7 @@ export const viewerMethods = {
       language: languageOf(file.path),
       readonly: true,
       value,
+      soft_wrap: this.wrap,
       font_family: codeFont(),
       font_size: codeSize(),
       syntax: {
@@ -223,7 +228,6 @@ export const viewerMethods = {
           .overflow_x_scrollbar().mode("scrolling")
           .child(
             div()
-              .w_full()
               .min_w(Math.max(300, (widest * CHAR_WIDTH + LINE_COLUMNS) * codeSize()))
               .h_full()
               .child(list),
@@ -310,54 +314,52 @@ export const viewerMethods = {
       );
   },
 
-  // Herdr only loads images from under its own folder, so the file is shown through a copy
-  // in Herdr's data directory. Saving over the copy updates what's on screen, which is how a
-  // changed image refreshes. Each file a tab shows gets its own name, for the same reason.
+  // Local and remote images share a bounded cache in Herdr's data directory.
   readImage(cx) {
-    const file = this.file;
-    if (file.on || this.reading) return;
-    if (this.imageFor !== file.path) {
-      this.imageFor = file.path;
-      this.imageSerial = (this.imageSerial ?? 0) + 1;
-      this.imageOld = this.imageCopy;
-      const ext = file.path.split(".").pop().toLowerCase();
-      this.imageCopy = `data/xmux-files/cache/${this.viewerId}-${this.imageSerial}.${ext}`;
+    const file = this.viewerFile ?? this.file;
+    if (isSvg(file.path) && this.markdownView() === "code") {
       this.imageShown = null;
+      this.problem = null;
+      return;
     }
-    const copy = this.imageCopy;
-    const old = this.imageOld ? `${appHome()}/${this.imageOld}` : "";
-    this.imageOld = null;
-    this.reading = true;
+    if (this.readingImage) return;
+    this.imageShown = null;
+    this.readingImage = true;
+    this.problem = null;
+    this.imageDoc = { phase: "loading" };
     cx.spawn(async (cx) => {
-      const result = await exec(
-        "sh",
-        ["-c", COPY_IMAGE, "copy-image", file.path, `${appHome()}/${copy}`, old],
-        {},
-      ).catch(() => null);
-      this.reading = false;
+      const result = await this.imageLoader.load(file).catch((error) => ({ error: error.message }));
+      this.readingImage = false;
       if (this.file?.path !== file.path) return;
-      const problem = result?.code === 0 ? null : "This file is no longer available.";
-      const shown = problem ? null : copy;
-      if (problem !== this.problem || shown !== this.imageShown) {
-        this.problem = problem;
-        this.imageShown = shown;
-        cx.notify();
-      }
+      this.problem = result.error ?? null;
+      this.imageShown = result.path ?? null;
+      this.imageDoc = result.error ? null : result;
+      cx.notify();
     });
   },
 
-  // Another machine's file isn't on this one to load.
   imageView() {
-    if (this.file.on) return Message("Images on another machine can't be shown here.");
     if (this.problem) return Message(this.problem);
-    if (!this.imageShown) return Message("Loading…");
-    return h_flex()
+    if (!this.imageShown) return Message(this.imageDoc?.error ?? this.imageDoc?.phase ?? "Loading…");
+    const { width, height } = this.imageDoc;
+    const room = Math.max(80, (this.imageViewport ?? width + 32) - 32);
+    const w = Math.round(Math.min(width, room) * this.imageZoom);
+    const h = Math.round(w * height / width);
+    return v_flex()
       .id("viewer-image")
       .flex_1()
       .min_h(0)
       .min_w(0)
-      .p(16)
-      .child(image(this.imageShown).flex_1().min_w(0).h_full());
+      .overflow_scrollbar().mode("scrolling")
+      .px(16)
+      .py(16)
+      .on_size_change((size, cx) => {
+        const width = Math.floor(size.width);
+        if (width === this.imageViewport) return;
+        this.imageViewport = width;
+        cx.notify();
+      })
+      .child(div().id("viewer-picture").flex_none().mx_auto().w(w).child(image(this.imageShown).w(w).h(h)));
   },
 
   // Preview or Code, chosen per tab and kept in the registry, else the setting.
@@ -379,30 +381,49 @@ export const viewerMethods = {
     return this.blocks;
   },
 
-  // A Markdown file's pictures, copied into the cache the way the image viewer does, each
-  // under its own name for as long as the tab is open. Checked whenever the file is.
+  // Markdown's local and remote pictures use the same content-keyed cache as a standalone image.
   readMarkdownImages(cx) {
     const file = this.file;
-    if (!file || file.on || !isMarkdown(file.path) || this.text === undefined) return;
-    this.markdownCopies ??= new Map();
+    if (!file || !isMarkdown(file.path) || this.text === undefined) return;
     this.markdownShown ??= new Map();
     this.markdownCopying ??= new Set();
-    for (const { path } of this.previewBlocks().filter((block) => block.type === "image")) {
+    for (const block of this.previewBlocks().filter((block) => block.type === "image")) {
+      const { path } = block;
       if (this.markdownCopying.has(path)) continue;
-      if (!this.markdownCopies.has(path))
-        this.markdownCopies.set(path, `data/xmux-files/cache/${this.viewerId}-m${this.markdownCopies.size + 1}.${path.split(".").pop().toLowerCase()}`);
-      const copy = this.markdownCopies.get(path);
       this.markdownCopying.add(path);
       cx.spawn(async (cx) => {
-        const result = await exec("sh", ["-c", COPY_IMAGE, "copy-image", path, `${appHome()}/${copy}`, ""], {}).catch(() => null);
+        const result = await this.imageLoader.load({ path, on: file.on }).catch((error) => ({ error: error.message }));
         this.markdownCopying.delete(path);
-        const shown = result?.code === 0;
-        if (this.markdownShown.get(path) !== shown) {
-          this.markdownShown.set(path, shown);
+        if (this.file?.path !== file.path || this.file?.on !== file.on) return;
+        if (JSON.stringify(this.markdownShown.get(path)) !== JSON.stringify(result)) {
+          this.markdownShown.set(path, result);
           cx.notify();
         }
       });
     }
+  },
+
+  // Mermaid is drawn to SVG locally by the bundled Node helper, then cached under data/.
+  renderMermaid(cx) {
+    const file = this.file;
+    if (!file || !isMarkdown(file.path) || this.text === undefined || this.diagramRunning) return;
+    const blocks = this.previewBlocks().filter((block) => block.type === "mermaid");
+    const pending = blocks.filter((block) => !block.diagram);
+    if (!pending.length) return;
+    const parts = pending.map((block) => ({ kind: "mermaid", text: block.text, block }));
+    const key = this.blocksOf;
+    this.diagramRunning = true;
+    cx.spawn(async (cx) => {
+      await this.diagramLoader.renderAll(
+        parts,
+        theme(),
+        () => this.file?.path === file.path && this.blocksOf === key,
+        () => cx.notify(),
+      );
+      for (const part of parts) part.block.diagram = part.diagram;
+      this.diagramRunning = false;
+      cx.notify();
+    });
   },
 
   // A web link opens in the browser, and a link to a file here opens it like a click in
@@ -418,11 +439,19 @@ export const viewerMethods = {
 
   previewImage(block) {
     const name = block.alt || baseName(block.path);
-    if (this.file.on) return Message(`${name}: images on another machine can't be shown here.`);
-    const shown = this.markdownShown?.get(block.path);
-    if (shown === false) return Message(`${name} isn't available.`);
-    if (!shown) return Message("Loading…");
-    return image(this.markdownCopies.get(block.path)).max_w_full().flex_none();
+    const result = this.markdownShown?.get(block.path);
+    if (result?.error) return Message(`${name}: ${result.error}`);
+    if (!result?.path) return Message(`${name}: Loading…`);
+    return div().flex_none().child(image(result.path).max_w_full().flex_none());
+  },
+
+  previewMermaid(block, i) {
+    const diagram = block.diagram;
+    if (diagram?.error) return Message(`Mermaid: ${diagram.error}`, true);
+    if (!diagram?.path) return Message("Rendering diagram…");
+    const room = Math.max(80, (this.previewViewport ?? diagram.width) - 48);
+    const width = Math.min(diagram.width, room);
+    return div().id(`viewer-mermaid-${this.viewerId}-${i}`).flex_none().child(image(diagram.path).w(width).h(width * diagram.height / diagram.width));
   },
 
   previewView() {
@@ -435,10 +464,18 @@ export const viewerMethods = {
       .px(24)
       .py(16)
       .gap(12)
+      .on_size_change((size, cx) => {
+        const width = Math.floor(size.width);
+        if (width === this.previewViewport) return;
+        this.previewViewport = width;
+        cx.notify();
+      })
       .children(
         this.previewBlocks().map((block, i) =>
           block.type === "image"
             ? this.previewImage(block)
+            : block.type === "mermaid"
+              ? this.previewMermaid(block, i)
             : Markdown(`viewer-md-${this.viewerId}-${i}`, block.text).on_link_click((url, cx) => this.followLink(url, cx)),
         ),
       );
@@ -451,12 +488,16 @@ export const viewerMethods = {
   },
 
   viewerActions() {
+    const t = theme();
     const file = this.file;
     const editors = file?.on ? [] : foundEditors();
     const markdown = Boolean(file && isMarkdown(file.path));
+    const svg = Boolean(file && isSvg(file.path));
     const previewing = this.showsPreview();
+    const coding = (!isImage(file?.path ?? "") && !previewing) || (svg && this.markdownView() === "code");
     const showView = (view) => (cx) => {
       this.setViewer(this.viewerId, { markdown: view });
+      this.readFile(cx);
       cx.notify();
     };
     // Only changes that replaced something have old lines to show.
@@ -466,6 +507,28 @@ export const viewerMethods = {
       .id("viewer-actions")
       .gap(6)
       .items_center()
+      .when(svg, (el) =>
+        el.child(
+          h_flex()
+            .id("viewer-view")
+            .gap(2)
+            .child(TextButton({ id: "viewer-view-preview", label: "Preview", active: this.markdownView() !== "code", onClick: showView("preview") }))
+            .child(TextButton({ id: "viewer-view-code", label: "Code", active: this.markdownView() === "code", onClick: showView("code") })),
+        ),
+      )
+      .when(isImage(file?.path ?? "") && this.imageShown !== null && this.markdownView() !== "code", (el) => {
+        const zoom = (step) => (cx) => {
+          const at = ZOOMS.indexOf(this.imageZoom);
+          this.imageZoom = ZOOMS[Math.max(0, Math.min(ZOOMS.length - 1, at + step))];
+          cx.notify();
+        };
+        return el.child(
+          h_flex().id("viewer-zoom").gap(2).items_center()
+            .child(TextButton({ id: "viewer-zoom-out", label: "−", disabled: this.imageZoom === ZOOMS[0], onClick: zoom(-1) }))
+            .child(div().min_w(38).text_center().text_color(t.dim).child(`${Math.round(this.imageZoom * 100)}%`))
+            .child(TextButton({ id: "viewer-zoom-in", label: "+", disabled: this.imageZoom === ZOOMS.at(-1), onClick: zoom(1) })),
+        );
+      })
       .when(markdown, (el) =>
         el.child(
           h_flex()
@@ -501,7 +564,20 @@ export const viewerMethods = {
             },
           }),
         ),
-      );
+      )
+      .when(coding, (el) => el.child(TextButton({
+        id: "viewer-wrap",
+        label: "Wrap",
+        active: this.wrap,
+        onClick: (cx) => {
+          this.wrap = !this.wrap;
+          setShared("xmux-files.wrap", this.wrap);
+          this.code?.release();
+          this.code = null;
+          if (this.text !== undefined && (!this.gutterOn || this.wrap)) this.code = this.newCode(this.file, this.text);
+          cx.notify();
+        },
+      })));
   },
 
   viewerView() {
@@ -537,11 +613,13 @@ export const viewerMethods = {
           .child(div().flex_1().min_w(0).truncate().text_color(t.dim).child(head.detail))
           .child(this.viewerActions()),
       );
-    if (this.file && isImage(this.file.path)) root.child(this.imageView());
+    const code = this.file && isSvg(this.file.path) && this.markdownView() === "code";
+    if (this.file && isImage(this.file.path) && !code) root.child(this.imageView());
     else if (this.problem) root.child(Message(this.problem));
     else if (this.text === undefined) root.child(Message(head ? "Loading…" : "This tab has no file."));
     else if (this.showsPreview()) root.child(this.previewView());
-    else if (this.gutterOn) root.child(this.linesView());
+    else if (this.gutterOn && !this.wrap) root.child(this.linesView());
+    else if (this.gutterOn && this.wrap && !this.code) root.child(Editor.new(this.code = this.newCode(this.file, this.text)).flex_1().min_h(0));
     else root.child(v_flex().flex_1().min_h(0).child(Editor.new(this.code).flex_1().min_h(0)));
     // There's no row of its own to sit in, so the actions float over the file's corner.
     // On the file's own colour, nearly opaque, so the text under it fades out without a box.

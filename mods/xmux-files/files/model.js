@@ -38,6 +38,7 @@ const extOf = (path) => {
 const IMAGES = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"]);
 export const isImage = (path) => IMAGES.has(extOf(path));
 export const isMarkdown = (path) => ["md", "markdown"].includes(extOf(path));
+export const isSvg = (path) => extOf(path) === "svg";
 
 // A link or image source in a Markdown file as an absolute path, from the file's folder.
 // Web addresses and other schemes aren't paths, so they come back null.
@@ -67,19 +68,15 @@ const FENCE = /^ {0,3}(`{3,}|~{3,})/;
 // shortcut: an image inside a paragraph, list or table, or from the web, is left to TextView;
 // split those out too if they need to show.
 export function markdownBlocks(text, folder) {
-  const blocks = [];
-  let lines = [];
-  let fence = null;
-  const flush = () => {
-    if (lines.some((line) => line.trim())) blocks.push({ type: "text", text: lines.join("\n") });
-    lines = [];
-  };
-  for (const line of String(text ?? "").split("\n")) {
-    const opens = FENCE.exec(line);
-    if (fence) {
-      if (opens && opens[1][0] === fence[0] && opens[1].length >= fence.length && !line.slice(opens[0].length).trim()) fence = null;
-    } else if (opens) fence = opens[1];
-    else {
+  return mermaidBlocks(text).flatMap((block) => {
+    if (block.type !== "text") return [block];
+    const blocks = [];
+    let lines = [];
+    const flush = () => {
+      if (lines.some((line) => line.trim())) blocks.push({ type: "text", text: lines.join("\n") });
+      lines = [];
+    };
+    for (const line of block.text.split("\n")) {
       const image = IMAGE_LINE.exec(line);
       const path = image && resolvePath(folder, image[2] ?? image[3]);
       if (path && isImage(path)) {
@@ -87,9 +84,33 @@ export function markdownBlocks(text, folder) {
         blocks.push({ type: "image", alt: image[1], path });
         continue;
       }
+      lines.push(line);
     }
-    lines.push(line);
+    flush();
+    return blocks;
+  });
+}
+
+// Mermaid blocks are rendered locally, never by the document itself.
+export function mermaidBlocks(text) {
+  const blocks = [];
+  let lines = [], fence = null;
+  const flush = () => {
+    if (lines.some((line) => line.trim())) blocks.push({ type: "text", text: lines.join("\n") });
+    lines = [];
+  };
+  for (const line of String(text ?? "").split("\n")) {
+    const open = /^ {0,3}(`{3,}|~{3,})\s*mermaid\s*$/.exec(line);
+    if (open) { flush(); fence = { marker: open[1], lines: [] }; continue; }
+    if (fence) {
+      const close = new RegExp(`^ {0,3}${fence.marker[0]}{${fence.marker.length},}\\s*$`);
+      if (close.test(line)) {
+        blocks.push({ type: "mermaid", text: fence.lines.join("\n") });
+        fence = null;
+      } else fence.lines.push(line);
+    } else lines.push(line);
   }
+  if (fence) lines.push("```mermaid", ...fence.lines);
   flush();
   return blocks;
 }
