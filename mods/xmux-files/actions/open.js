@@ -1,6 +1,6 @@
-// Opening a file in the centre: one shared tab per space for browsing, and tabs you keep.
-// Every viewer has an ID in a shared registry, because a copy of a mod can't name its own
-// tab: it records the tab it was opened in, and the sidebar and menus act through that.
+// Opening a file in the centre. Every viewer has an ID in a shared registry,
+// because a copy of a mod can't name its own tab: it records the tab it was
+// opened in, and the sidebar and menus act through that.
 import { panes, run, shared, setShared, spaces } from "herdr";
 import { baseName } from "../files/model.js";
 
@@ -40,13 +40,13 @@ export const openMethods = {
     if (live.length !== Object.keys(entries).length) setShared(VIEWERS, Object.fromEntries(live));
   },
 
-  newViewer(file, space, preview) {
+  newViewer(file, space) {
     const id = `v${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
     // Tabs that aren't this one, so it can tell its own when it opens.
     const others = panes()
       .filter((p) => p.mod === "xmux-files")
       .map((p) => p.tab);
-    this.setViewer(id, { space, file, preview, tab: null, others, at: Date.now() });
+    this.setViewer(id, { space, file, tab: null, others, at: Date.now() });
     run("tab.new", {
       space,
       name: baseName(file.path),
@@ -56,7 +56,7 @@ export const openMethods = {
     return id;
   },
 
-  // A click: already open goes to that tab, otherwise it's shown in the shared one.
+  // A click: select the file's existing tab, otherwise open a new one.
   openFile(file, cx) {
     const space = spaces().find((s) => s.active)?.id;
     if (!space) return;
@@ -64,27 +64,7 @@ export const openMethods = {
     const open = viewers.find(([, entry]) => entry.file?.path === file.path);
     if (open) {
       if (open[1].tab) run("tab.select", { id: open[1].tab });
-    } else {
-      const shared_ = viewers.find(([, entry]) => entry.preview);
-      if (shared_) {
-        const [id, entry] = shared_;
-        this.setViewer(id, { file });
-        if (entry.tab) {
-          run("tab.rename", { id: entry.tab, name: baseName(file.path) });
-          run("tab.select", { id: entry.tab });
-        }
-      } else this.newViewer(file, space, true);
-    }
-    cx?.notify();
-  },
-
-  // A double-click: the shared tab holding this file becomes one you keep, and the next
-  // click starts a new shared tab. A double-click has already been a click, so it never
-  // needs a second tab of its own.
-  keepFile(file, cx) {
-    const space = spaces().find((s) => s.active)?.id;
-    const open = this.liveViewers(space).find(([, entry]) => entry.file?.path === file.path);
-    if (open) this.setViewer(open[0], { preview: false });
+    } else this.newViewer(file, space);
     cx?.notify();
   },
 
@@ -94,9 +74,8 @@ export const openMethods = {
     if (!space) return;
     const open = this.liveViewers(space).find(([, entry]) => entry.file?.path === file.path);
     if (open) {
-      this.setViewer(open[0], { preview: false });
       if (open[1].tab) run("tab.select", { id: open[1].tab });
-    } else this.newViewer(file, space, false);
+    } else this.newViewer(file, space);
     cx?.notify();
   },
 

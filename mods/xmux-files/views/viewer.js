@@ -51,7 +51,6 @@ export const viewerMethods = {
       tab,
       space: entry?.space ?? this.viewerSpace,
       file: entry?.file ?? this.viewerFile,
-      preview: entry?.preview ?? false,
     });
   },
 
@@ -163,7 +162,7 @@ export const viewerMethods = {
     const picture = fileIcon(this.fileIcons, file.path, { light: isLight(theme().background) });
     return {
       title: name,
-      detail: [folder, this.viewerEntry()?.preview ? "Preview" : null].filter(Boolean).join(" · "),
+      detail: folder,
       // color: a full-colour picture, which XMux Changes' pane header draws untinted.
       ...(picture ? { icon: picture, color: true } : { icon: "mods/xmux-files/icons/file.svg" }),
     };
@@ -312,7 +311,7 @@ export const viewerMethods = {
   },
 
   // Herdr only loads images from under its own folder, so the file is shown through a copy
-  // in this mod's cache. Saving over the copy updates what's on screen, which is how a
+  // in Herdr's data directory. Saving over the copy updates what's on screen, which is how a
   // changed image refreshes. Each file a tab shows gets its own name, for the same reason.
   readImage(cx) {
     const file = this.file;
@@ -322,7 +321,7 @@ export const viewerMethods = {
       this.imageSerial = (this.imageSerial ?? 0) + 1;
       this.imageOld = this.imageCopy;
       const ext = file.path.split(".").pop().toLowerCase();
-      this.imageCopy = `mods/xmux-files/cache/${this.viewerId}-${this.imageSerial}.${ext}`;
+      this.imageCopy = `data/xmux-files/cache/${this.viewerId}-${this.imageSerial}.${ext}`;
       this.imageShown = null;
     }
     const copy = this.imageCopy;
@@ -391,7 +390,7 @@ export const viewerMethods = {
     for (const { path } of this.previewBlocks().filter((block) => block.type === "image")) {
       if (this.markdownCopying.has(path)) continue;
       if (!this.markdownCopies.has(path))
-        this.markdownCopies.set(path, `mods/xmux-files/cache/${this.viewerId}-m${this.markdownCopies.size + 1}.${path.split(".").pop().toLowerCase()}`);
+        this.markdownCopies.set(path, `data/xmux-files/cache/${this.viewerId}-m${this.markdownCopies.size + 1}.${path.split(".").pop().toLowerCase()}`);
       const copy = this.markdownCopies.get(path);
       this.markdownCopying.add(path);
       cx.spawn(async (cx) => {
@@ -453,7 +452,6 @@ export const viewerMethods = {
 
   viewerActions() {
     const file = this.file;
-    const preview = this.viewerEntry()?.preview;
     const editors = file?.on ? [] : foundEditors();
     const markdown = Boolean(file && isMarkdown(file.path));
     const previewing = this.showsPreview();
@@ -485,18 +483,6 @@ export const viewerMethods = {
             active: allOpen,
             onClick: (cx) => {
               this.openHunks = new Set(allOpen ? [] : openable);
-              cx.notify();
-            },
-          }),
-        ),
-      )
-      .when(Boolean(preview), (el) =>
-        el.child(
-          TextButton({
-            id: "viewer-keep",
-            label: "Keep tab",
-            onClick: (cx) => {
-              this.setViewer(this.viewerId, { preview: false });
               cx.notify();
             },
           }),

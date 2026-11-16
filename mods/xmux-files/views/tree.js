@@ -52,8 +52,7 @@ export const treeMethods = {
 
   clickFile(relative, event, cx) {
     const file = this.fileOf(relative);
-    if (event?.click_count === 2) this.keepFile(file, cx);
-    else this.openFile(file, cx);
+    this.openFile(file, cx);
   },
 
   row(relative, name, dir, depth, t) {
