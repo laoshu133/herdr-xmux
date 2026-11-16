@@ -1,5 +1,5 @@
 // The Files tab: what the PR changes, file by file. A click shows that file's diff
-// in Better Changes' centre tab when that mod is installed, otherwise on the provider.
+// in XMux Changes' centre tab when that mod is installed, otherwise on the provider.
 import { div } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { spaces, panes, theme, shared, setShared, run } from "herdr";
@@ -126,9 +126,9 @@ export const filesMethods = {
       .child(stat(`−${file.deletions}`, t.ansi1));
   },
 
-  // Hands GitHub's patch to Better Changes the way its own sidebar picks a file:
+  // Hands GitHub's patch to XMux Changes the way its own sidebar picks a file:
   // the selection goes in shared state first, then its diff tab opens or is selected.
-  // shortcut: depends on Better Changes' shared("xmux-better-changes.diff-tabs") shape; change both together.
+  // shortcut: depends on XMux Changes' shared("xmux-changes.diff-tabs") shape; change both together.
   openFile(file, cx) {
     const pr = this.pr;
     this.openFilePath = file.filename;
@@ -153,12 +153,12 @@ export const filesMethods = {
       at: Date.now(),
     };
     const ids = new Set((space.tabs ?? []).map((t) => t.id));
-    const tab = panes().find((p) => p.mod === "xmux-better-changes" && ids.has(p.tab))?.tab;
-    const entries = shared("xmux-better-changes.diff-tabs") ?? {};
+    const tab = panes().find((p) => p.mod === "xmux-changes" && ids.has(p.tab))?.tab;
+    const entries = shared("xmux-changes.diff-tabs") ?? {};
     const old = entries[space.id];
     const name = file.filename.split("/").pop();
-    // The pending time keeps rapid clicks from opening two tabs, as in Better Changes.
-    setShared("xmux-better-changes.diff-tabs", {
+    // The pending time keeps rapid clicks from opening two tabs, as in XMux Changes.
+    setShared("xmux-changes.diff-tabs", {
       ...entries,
       [space.id]: { source, selection, pending: tab ? null : (old?.pending ?? Date.now()) },
     });
@@ -169,7 +169,7 @@ export const filesMethods = {
       run("tab.new", {
         space: space.id,
         name,
-        mod: "xmux-better-changes",
+        mod: "xmux-changes",
         props: { mode: "diff", space: space.id, source, selection },
       });
     }

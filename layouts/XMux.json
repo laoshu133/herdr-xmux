@@ -19,7 +19,10 @@
           "id": "brand",
           "type": "block",
           "content": {
-            "mod": "xmux-workspace-chrome"
+            "mod": "xmux-sidebar",
+            "props": {
+              "view": "chrome"
+            }
           },
           "size": {
             "px": 36
@@ -30,7 +33,7 @@
           "id": "sidebar-lists",
           "type": "block",
           "content": {
-            "mod": "xmux-better-sidebar",
+            "mod": "xmux-sidebar",
             "props": {
               "view": "lists"
             }
@@ -41,7 +44,7 @@
           "id": "sidebar-footer",
           "type": "block",
           "content": {
-            "mod": "xmux-better-sidebar",
+            "mod": "xmux-sidebar",
             "props": {
               "view": "footer"
             }
@@ -72,7 +75,7 @@
               "id": "tabs",
               "type": "block",
               "content": {
-                "mod": "xmux-better-tabs",
+                "mod": "xmux-tabs",
                 "props": {
                   "rememberPanels": {
                     "container": "panel",
@@ -182,14 +185,14 @@
                       "id": "files",
                       "type": "block",
                       "content": {
-                        "mod": "xmux-better-files"
+                        "mod": "xmux-files"
                       }
                     },
                     {
                       "id": "changes",
                       "type": "block",
                       "content": {
-                        "mod": "xmux-better-changes"
+                        "mod": "xmux-changes"
                       }
                     },
                     {

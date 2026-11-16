@@ -1,0 +1,10 @@
+{
+  "$schema": "./mod.schema.json",
+  "version": "3.1.0",
+  "place": "none",
+  "title": "XMux Tabs",
+  "cloned_from": {
+    "name": "better-tabs",
+    "version": "0.1.15"
+  }
+}

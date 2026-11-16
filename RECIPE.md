@@ -13,7 +13,7 @@ Changes, PRs, and Issues panels.
 - A single 36px tab row with horizontal scrolling and truncated titles.
 - Same-space tab dragging, machine ordering, and space and agent navigation.
 - `+` starts a terminal in the active pane's directory; Shift-click opens the
-  terminal and agent picker.
+  terminal and agent picker. `Cmd+Shift+T` opens the same picker.
 - Files, Changes, PRs, and Issues panels with repository-aware actions.
 - One-pixel pane frames, split spacing, focus treatment, and continuous shell
   boundaries.
@@ -38,11 +38,10 @@ shared shell, tab, and status boundaries remain continuous.
 | --- | --- |
 | `layouts/XMux.json` | The XMux window layout. |
 | `themes/ghostty-solarized-dark.json` | Shared terminal and app theme. |
-| `mods/xmux-workspace-chrome` | Brand bar and window chrome. |
-| `mods/xmux-better-tabs` | Tabs, scrolling, titles, and panel actions. |
-| `mods/xmux-better-sidebar` | Spaces, agents, machines, and quick actions. |
-| `mods/xmux-better-files` | File tree and file viewer. |
-| `mods/xmux-better-changes` | Changes, staging, commits, and diffs. |
+| `mods/xmux-tabs` | Tabs, scrolling, titles, and panel actions. |
+| `mods/xmux-sidebar` | Window chrome, spaces, agents, machines, and quick actions. |
+| `mods/xmux-files` | File tree and file viewer. |
+| `mods/xmux-changes` | Changes, staging, commits, and diffs. |
 | `mods/xmux-branch-pr` | Pull request workflow. |
 | `mods/xmux-branch-issue` | Issue workflow. |
 | `mods/xmux-new-menu` | Terminal and agent creation menu. |

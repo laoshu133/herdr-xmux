@@ -1,0 +1,10 @@
+{
+  "$schema": "./mod.schema.json",
+  "version": "3.4.0",
+  "place": "none",
+  "title": "XMux Sidebar",
+  "cloned_from": {
+    "name": "better-sidebar",
+    "version": "0.1.15"
+  }
+}

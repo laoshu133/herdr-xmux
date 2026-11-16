@@ -9,7 +9,7 @@
 //   actions/worktrees.js  a PR's checkouts
 //   actions/menus.js      the popup menus
 //   views/list.js, detail.js, conversation.js, checks.js, worktrees.js   the drawing
-//   views/files.js        the Files tab, and handing a file's diff to Better Changes
+//   views/files.js        the Files tab, and handing a file's diff to XMux Changes
 // github/model.js says what GitHub's answers mean; views/ui.js holds every look.
 import { View } from "gpui-kit";
 import { InputState, TextareaState } from "gpui-base";
@@ -100,9 +100,9 @@ class PullRequests extends View {
     this.tab = DEFAULT_SETTINGS.list.default.tab;
     this.state = DEFAULT_SETTINGS.list.default.state;
     this.applySettings(cx);
-    // shortcut: checked once, so installing Better Changes takes effect after the next reload.
+    // shortcut: checked once, so installing XMux Changes takes effect after the next reload.
     this.hasBetterChanges = false;
-    readTextFile(`${appHome()}/mods/xmux-better-changes/mod.json`)
+    readTextFile(`${appHome()}/mods/xmux-changes/mod.json`)
       .then((raw) => (this.hasBetterChanges = raw !== null))
       .catch(() => {});
     this.search = InputState.new({ placeholder: "Search · #482, text, author:login" });

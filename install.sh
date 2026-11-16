@@ -16,15 +16,22 @@ fi
 
 # Keep installation and validation in lockstep when a mod is added or removed.
 XMUX_MODS='
-xmux-workspace-chrome
-xmux-better-tabs
-xmux-better-sidebar
-xmux-better-files
-xmux-better-changes
+xmux-tabs
+xmux-sidebar
+xmux-files
+xmux-changes
 xmux-branch-pr
 xmux-branch-issue
 xmux-new-menu
 xmux-status'
+
+# Retire names replaced by the current module layout.
+OLD_XMUX_MODS='
+xmux-workspace-chrome
+xmux-better-tabs
+xmux-better-sidebar
+xmux-better-files
+xmux-better-changes'
 
 mkdir -p "$APP_HOME/layouts" "$APP_HOME/themes" "$APP_HOME/mods" "$BACKUP"
 
@@ -43,6 +50,10 @@ link_target() {
   backup_target "$target"
   ln -s "$source" "$target"
 }
+
+for mod in $OLD_XMUX_MODS; do
+  backup_target "$APP_HOME/mods/$mod"
+done
 
 link_target "$REPO_ROOT/layouts/XMux.json" "$APP_HOME/layouts/XMux.json"
 link_target "$REPO_ROOT/themes/ghostty-solarized-dark.json" "$APP_HOME/themes/ghostty-solarized-dark.json"
