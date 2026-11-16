@@ -13,7 +13,9 @@ Changes, PRs, and Issues panels.
 - A single 36px tab row with horizontal scrolling and truncated titles.
 - Same-space tab dragging, machine ordering, and space and agent navigation.
 - `+` starts a terminal in the active pane's directory; Shift-click opens the
-  terminal and agent picker. `Cmd+Shift+T` opens the same picker.
+  terminal and agent picker. `Cmd+Ctrl+T` opens the same picker.
+- `Cmd+Shift+T` starts a fresh terminal in the most recently closed tab's
+  directory, at its previous position. It does not resume the old process.
 - Files, Changes, PRs, and Issues panels with repository-aware actions.
 - One-pixel pane frames, split spacing, focus treatment, and continuous shell
   boundaries.

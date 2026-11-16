@@ -38,6 +38,11 @@ export const contextMenuMethods = {
       groups.push([{ id: "diff", label: "Show diff", run: (cx) => this.showDiff(target, cx) }]);
     groups.push([
       {
+        id: "copy-filename",
+        label: "Copy filename",
+        run: (cx) => cx.write_to_clipboard(target.path.split("/").pop()),
+      },
+      {
         id: "copy-relative",
         label: "Copy relative path",
         run: (cx) => cx.write_to_clipboard(target.relative),

@@ -502,12 +502,8 @@ export class Spaces {
       .when(connected, (el) =>
         el.child(this.machineAddButton(m, t, this.hoverMachine === (m ?? null))),
       )
-      .child(
-        div()
-          .size(6)
-          .rounded(3)
-          .flex_none()
-          .bg(connected ? t.ansi2 : t.dim),
+      .when(!connected, (el) =>
+        el.child(div().size(6).rounded(3).flex_none().bg(t.dim)),
       )
       .child(Icon(`chevron-${this.folded.has(m) ? "right" : "down"}`, 11));
   }

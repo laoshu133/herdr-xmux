@@ -1,14 +1,18 @@
 import { View, div, svg } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { spaces, agents, focused, theme, run, window, keys, nextCommand } from "herdr";
+import { ReopenTab } from "./reopen.js";
 
 export default class WorkspaceStatus extends View {
   init(_props, cx) {
+    this.reopenTab = new ReopenTab();
+    this.reopenTab.init(cx);
     cx.spawn(async () => {
       for (;;) {
         const command = await nextCommand();
         if (command === "cross-tab-next") this.crossTab(1);
         else if (command === "cross-tab-prev") this.crossTab(-1);
+        else if (command === "reopen-closed") this.reopenTab.reopen();
       }
     });
   }
