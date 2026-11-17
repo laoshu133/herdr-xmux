@@ -1,11 +1,11 @@
 // Checkouts of a PR: those that exist, and making a new one as a new space.
 import { InputState } from "gpui-base";
 import { spaces, exec, home, run, knownAgents } from "herdr";
-import { repositoryFromRemote } from "../github/model.js";
+import { requestKey, requestRef, requestShort, repositoryKey, resolveProvider, encodeBinding, decodeBinding } from "../github/provider.js";
 
 export const worktreeMethods = {
   worktreeKey() {
-    return `${this.pr?.repository}#${this.pr?.number}`;
+    return requestKey(this.pr);
   },
 
   // Worktrees already checked out for this PR: those on its head branch, as when the
@@ -13,7 +13,6 @@ export const worktreeMethods = {
   loadWorktrees(cx) {
     const { sp, pr } = this;
     if (!sp || !pr) return;
-    const repo = pr.repository;
     const key = this.worktreeKey();
     cx.spawn(async (cx) => {
       const options = { cwd: sp.folder, on: sp.machine };
@@ -25,19 +24,19 @@ export const worktreeMethods = {
       const branches = new Set();
       for (const line of (bound.stdout ?? "").split("\n")) {
         const match = /^branch\.(.+)\.herdr-pr (.+)$/.exec(line.trim());
-        if (match && match[2].toLowerCase() === key.toLowerCase()) branches.add(match[1]);
+        if (match) { const binding = decodeBinding(match[2]);
+          if (binding && requestKey({ provider: binding.provider, repository: binding.repo, number: binding.number }) === key) branches.add(match[1]); }
       }
-      // shortcut: matches the head branch by name, so a fork's same-named branch counts too.
-      branches.add(pr.headRefName);
+      // Unbound checkouts must match both the source branch and its commit.
       const list = [];
       const out = await exec("git", ["worktree", "list", "--porcelain"], options);
       for (const block of (out.stdout ?? "").split("\n\n")) {
         const path = /^worktree (.+)$/m.exec(block)?.[1];
         const branch = /^branch refs\/heads\/(.+)$/m.exec(block)?.[1];
-        if (path && branch && branches.has(branch))
+        if (path && branch && (branches.has(branch) || branch === pr.headRefName && /^HEAD (.+)$/m.exec(block)?.[1] === pr.headRefOid))
           list.push({ path, branch, name: path.split(/[\\/]/).pop() });
       }
-      if (this.pr?.number === pr.number && this.pr?.repository === repo)
+      if (requestKey(this.pr) === key)
         this.worktrees = { key, list };
       cx.notify();
     });
@@ -69,7 +68,7 @@ export const worktreeMethods = {
       worktrees.map((w) => w.branch),
     );
     const name = free(
-      `PR-${this.pr.number}`,
+      `${this.pr.provider?.kind === "gitlab" ? "MR" : "PR"}-${this.pr.number}`,
       worktrees.map((w) => w.name),
     );
     const form = {
@@ -131,7 +130,8 @@ export const worktreeMethods = {
         for (const remote of remotes) {
           const candidate = await git(["remote", "get-url", remote]);
           try {
-            if (repositoryFromRemote(candidate).toLowerCase() === repo.toLowerCase()) {
+            const resolved = await resolveProvider(candidate, { tools: this.settings.tools, hosts: this.settings.hosts });
+            if (repositoryKey(resolved, resolved.repo).toLowerCase() === repositoryKey(pr.provider, repo).toLowerCase()) {
               url = candidate;
               break;
             }
@@ -139,7 +139,7 @@ export const worktreeMethods = {
         }
         if (!url)
           throw new Error(
-            "This space has no remote for this PR’s repository. Open a space for that repository first.",
+            "This space has no remote for this request’s host and repository. Open a space for that repository first.",
           );
         const existing = await exec(
           "git",
@@ -164,20 +164,20 @@ export const worktreeMethods = {
           userHome = result.stdout.trim().replace(/\\/g, "/");
         }
         const root = this.settings.worktrees.root.replace(/^~(?=\/|$)/, userHome);
-        const path = `${root}/${repo.replace(/\//g, "-")}/${name}`;
+        const path = `${root}/${pr.provider.kind}-${pr.provider.host}/${repo.replace(/\//g, "-")}/${name}`;
         // Pin the checkout to a verified commit, not a moving PR branch. If
-        // GitHub and FETCH_HEAD disagree, stop rather than open the wrong code.
-        const latest = await this.api({ action: "detail", repo, number: pr.number }, sp);
+        // the hosting service and FETCH_HEAD disagree, stop rather than open the wrong code.
+        const latest = await this.api({ action: "detail", repo, number: pr.number, provider: pr.provider }, sp);
         if (!/^[0-9a-f]{40,64}$/i.test(latest.headRefOid ?? ""))
-          throw new Error("The PR has no valid head commit.");
-        await git(["fetch", "--no-tags", "--", url, `refs/pull/${pr.number}/head`]);
+          throw new Error(`The ${requestShort(pr)} has no valid head commit.`);
+        await git(["fetch", "--no-tags", "--", url, requestRef(pr)]);
         if ((await git(["rev-parse", "FETCH_HEAD"])) !== latest.headRefOid)
-          throw new Error("The PR changed while fetching. Try again.");
+          throw new Error("The source branch changed while fetching. Refresh and try again.");
         await git(["worktree", "add", "-b", branch, "--", path, latest.headRefOid]);
         // Retain the checkout if opening its terminal fails, so retry cannot create it twice.
         form.path = path;
         form.createdName = name;
-        await git(["config", `branch.${branch}.herdr-pr`, `${repo}#${pr.number}`]);
+        await git(["config", `branch.${branch}.herdr-pr`, encodeBinding(pr)]);
         this.openWorktree(form, cx);
       } catch (error) {
         form.error = error.message;

@@ -185,11 +185,10 @@ test("PR reads use local hosting credentials, coalesce, and invalidate after a w
   const cache = await cacheFixture();
   const calls = [];
   const { readMethods } = await moduleAt("../mods/xmux-branch-pr/github/reads.js", ["readMethods"], {
-    ...cache, appHome: () => "/config",
-    exec: async (_bin, argv, options) => {
-      const request = JSON.parse(argv[0]);
-      calls.push({ request, options });
-      return { code: 0, stdout: JSON.stringify({ number: request.number, revision: calls.length }) };
+    ...cache,
+    githubApi: async (request, _sp, provider) => {
+      calls.push({ request, options: { on: null, cwd: undefined }, provider });
+      return { number: request.number, revision: calls.length };
     },
   });
   const state = { ...readMethods, sp: { machine: "server", folder: "/remote/repo" },

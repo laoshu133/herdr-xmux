@@ -2,13 +2,14 @@
 import { div } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { run, theme } from "herdr";
+import { requestKey } from "../github/provider.js";
 import { TEXT, Button, Row, TextButton, TextField } from "./ui.js";
 
 export const worktreeViewMethods = {
   worktreeRows(body) {
     const list = this.currentWorktrees();
     const form = this.worktreeForm;
-    const formOpen = form && form.pr.id === this.pr?.id && form.repo === this.pr?.repository;
+    const formOpen = form && requestKey(form.pr) === requestKey(this.pr);
     const action = formOpen
       ? null
       : TextButton({

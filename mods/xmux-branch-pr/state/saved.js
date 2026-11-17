@@ -1,5 +1,6 @@
 // What survives a reload: each repository's filters and open PR, each PR's tab
 // and filters, and which comments have been read.
+import { requestKey, repositoryKey } from "../github/provider.js";
 import { allComments, searchQuery } from "../github/model.js";
 
 const SECTIONS = ["overview", "conversation", "checks", "files"];
@@ -24,11 +25,11 @@ export const savedMethods = {
   },
 
   viewKey(repo = this.repo) {
-    return `pr-view:v2:${this.sp?.machine ?? "local"}:${this.sp?.folder ?? ""}:${repo}`;
+    return `pr-view:v3:${this.sp?.machine ?? "local"}:${this.sp?.folder ?? ""}:${repositoryKey(this.provider, repo)}`;
   },
 
   detailKey(pr = this.pr) {
-    return `pr-detail:v1:${this.sp?.machine ?? "local"}:${this.sp?.folder ?? ""}:${pr?.repository || this.repo}:${pr?.id}`;
+    return `pr-detail:v2:${this.sp?.machine ?? "local"}:${this.sp?.folder ?? ""}:${requestKey(pr)}`;
   },
 
   rememberDetail() {
@@ -54,8 +55,10 @@ export const savedMethods = {
         tab: this.tab,
         state: this.state,
         query: this.search.value(),
+        listAuthor: this.listAuthor.value(),
+        listReviewer: this.listReviewer.value(),
         selected: this.pr
-          ? { number: this.pr.number, id: this.pr.id, repository: this.pr.repository }
+          ? { number: this.pr.number, repository: this.pr.repository, provider: this.pr.provider }
           : (this.pendingPR ?? this.restoreSelection ?? null),
         lastUpdated: this.lastUpdated || null,
       }),
@@ -69,7 +72,7 @@ export const savedMethods = {
     this.browseKey = key;
     const saved = this.readStored(key);
     this.viewWasSaved = Boolean(saved.tab || saved.state);
-    const tabs = ["all", "mine", "involved"];
+    const tabs = ["all", "mine", "review-requested"];
     const states = ["open", "draft", "merged", "closed", "all"];
     const wanted = this.settings.list.default;
     this.tab = tabs.includes(saved.tab)
@@ -86,6 +89,8 @@ export const savedMethods = {
     // debounce path here; the caller is already about to load this view.
     this.restoringSearch = true;
     this.search.set_value(typeof saved.query === "string" ? saved.query : this.search.value());
+    this.listAuthor.set_value(saved.listAuthor || "");
+    this.listReviewer.set_value(saved.listReviewer || "");
     this.restoringSearch = false;
     this.serverSearch = searchQuery(this.search.value());
     this.restoreSelection =
@@ -96,7 +101,14 @@ export const savedMethods = {
   },
 
   adoptPR(pr, repo = this.repo) {
-    const different = this.pr?.id !== pr.id || this.pr?.repository !== repo;
+    const different = requestKey(this.pr) !== requestKey({ ...pr, repository: repo });
+    if (!different && this.pr?.headRefOid === pr.headRefOid && pr.provider?.kind === "gitlab") {
+      for (const section of ["conversation", "checks"]) if (this.pr.loaded?.[section] && !pr.loaded?.[section]) {
+        pr = { ...pr, loaded: { ...pr.loaded, [section]: true } };
+        for (const field of section === "conversation" ? ["comments", "threads", "reviews"] : ["checks"])
+          pr[field] = this.pr[field];
+      }
+    }
     if (different) {
       this.leavePR();
       const saved = this.readStored(this.detailKey({ ...pr, repository: repo }));
@@ -111,7 +123,12 @@ export const savedMethods = {
       this.draftKey = null;
       // Cleared first so that restoring the draft doesn't write it to the old PR's key.
       this.commentKey = null;
-      const commentKey = `pr-draft:${this.spaceKey}:${repo}:${pr.id}:comment`;
+      this.jobs = {};
+      this.logs = {};
+      this.sectionLoads = {};
+      this.prFiles = null;
+      this.stateChange = null;
+      const commentKey = `pr-draft:v2:${this.spaceKey}:${requestKey(pr)}:comment`;
       this.newComment.set_value(localStorage.getItem(commentKey) ?? "");
       this.commentKey = commentKey;
       this.conversationsVisited = this.section === "conversation";
@@ -159,6 +176,7 @@ export const savedMethods = {
     this.notice = null;
     if (section === "conversation") this.conversationsVisited = true;
     if (section === "files") this.loadFiles(cx);
+    else this.loadSection(section, cx);
     this.rememberDetail();
     cx.notify();
   },
@@ -174,6 +192,7 @@ export const savedMethods = {
     if (this.mutating) return;
     this.leavePR();
     this.pr = null;
+    this.sectionLoads = {};
     this.pendingPR = null;
     this.restoreSelection = null;
     this.detailToken++;

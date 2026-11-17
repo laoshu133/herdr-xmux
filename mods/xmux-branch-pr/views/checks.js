@@ -26,7 +26,7 @@ export const checksMethods = {
     const root = v_flex().id("pr-checks-workflows").min_w(0);
     if (pr.checksError) root.child(Message(pr.checksError, true));
     const checks = pr.checks ?? [];
-    if (!checks.length && !pr.checksError) root.child(Message("No checks reported."));
+    if (!checks.length && !pr.checksError) root.child(Message(pr.provider?.kind === "gitlab" ? "No pipelines reported for the current version." : "No checks reported."));
     checkGroups(checks).forEach((group, i) => {
       const summary = checkSummary(group.checks.map((x) => x.check));
       const open = this.workflowOpen[group.key] ?? Boolean(summary.counts.failure);
@@ -110,9 +110,10 @@ export const checksMethods = {
     const loaded = this.jobs[group.run];
     if (loaded?.loading) content.child(Message("Loading job steps…"));
     if (loaded?.error) content.child(Message(loaded.error, true));
+    if (loaded?.warning) content.child(Message(loaded.warning, true));
     const jobId = jobIdOf(check);
     const jobs = (loaded?.jobs ?? []).filter((job) =>
-      jobId ? String(job.id) === jobId : job.name === check.name,
+      check.projectId ? true : jobId ? String(job.id) === jobId : job.name === check.name,
     );
     if (group.run && loaded?.jobs && !jobs.length)
       content.child(Message("Step details are unavailable. View the workflow on the provider."));
@@ -121,6 +122,11 @@ export const checksMethods = {
   },
 
   jobBlock(content, job, t) {
+    if (job.nativeGitLab) content.child(
+      h_flex().h(26).gap(6).items_center().child(this.checkIcon(checkStatus({ status: job.status }), t))
+        .child(div().flex_1().min_w(0).truncate().child(`${job.stage || ""} · ${job.name}`))
+        .when(Boolean(job.web_url), el => el.child(TextButton({ id: `job-web-${job.id}`, label: job.bridge ? "Downstream pipeline" : "Open job", onClick: cx => cx.open_url(job.downstream_pipeline?.web_url || job.web_url) })))
+    );
     for (const step of job.steps ?? [])
       content.child(
         h_flex()
@@ -139,11 +145,11 @@ export const checksMethods = {
               .child(elapsed(step.started_at, step.completed_at)),
           ),
       );
-    if (job.conclusion === "failure")
+    if (job.nativeGitLab && !job.bridge || job.conclusion === "failure")
       content.child(
         TextButton({
           id: `pr-log-${job.id}`,
-          label: "Failed step output",
+          label: job.nativeGitLab ? "View job log" : "Failed step output",
           disabled: Boolean(this.logs[job.id]?.loading),
           onClick: (cx) => this.loadLogs(job, cx),
         }),
@@ -153,7 +159,7 @@ export const checksMethods = {
     if (log?.text !== undefined)
       content.child(
         CodeBlock(
-          `${log.truncated ? "Last part of the output:\n" : ""}${cleanLog(log.text) || "No failed-step output available."}`,
+          `${log.truncated ? "Last part of the output:\n" : ""}${cleanLog(log.text) || "No output available."}`,
         ),
       );
   },

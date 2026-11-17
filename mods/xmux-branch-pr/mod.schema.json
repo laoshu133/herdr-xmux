@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Branch PR mod.json",
-  "description": "What Herdr reads from Branch PR's mod.json, and the settings it takes.",
+  "title": "Pull / Merge Requests mod.json",
+  "description": "GitHub and GitLab request panel settings.",
   "type": "object",
   "properties": {
     "$schema": {
@@ -113,12 +113,12 @@
                   "enum": [
                     "all",
                     "mine",
-                    "involved"
+                    "review-requested"
                   ],
                   "x-labels": {
-                    "all": "All PRs",
-                    "mine": "Created",
-                    "involved": "Involved"
+                    "all": "All",
+                    "mine": "Created by me",
+                    "review-requested": "Review requested"
                   },
                   "default": "all"
                 },
@@ -196,6 +196,35 @@
               "description": "The glab command, or its full path.",
               "type": "string",
               "default": "glab"
+            }
+          }
+        },
+        "hosts": {
+          "title": "Hosting service mappings",
+          "description": "Map SSH aliases or custom domains to their hosting platform and API hostname.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "remote",
+              "kind",
+              "host"
+            ],
+            "properties": {
+              "remote": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "github",
+                  "gitlab"
+                ]
+              },
+              "host": {
+                "type": "string"
+              }
             }
           }
         }

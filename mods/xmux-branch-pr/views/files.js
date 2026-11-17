@@ -3,6 +3,8 @@
 import { div } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { spaces, panes, theme, shared, setShared, run } from "herdr";
+import { fileMenuTarget, showFileMenu } from "../shared/file-menu.js";
+import { requestKey, requestShort } from "../github/provider.js";
 import { fileTree } from "../github/model.js";
 import { TEXT, codeFont, Chevron, Icon, IconButton, Message, Row } from "./ui.js";
 
@@ -15,14 +17,15 @@ export const filesMethods = {
   loadFiles(cx) {
     const pr = this.pr;
     if (!pr) return;
-    const key = `${pr.repository}#${pr.number}@${pr.headRefOid}`;
+    const version = `${pr.headRefOid}:${pr.baseRefOid || pr.diffBaseSha || ""}:${pr.diffStartSha || ""}`;
+    const key = `${requestKey(pr)}@${version}`;
     if (this.prFiles?.key === key && !this.prFiles.error) return;
     this.prFiles = { key, loading: true };
     cx.spawn(async (cx) => {
       let next;
       try {
-        const pages = await this.api({ action: "files", repo: pr.repository, number: pr.number });
-        next = { key, list: pages.flat() };
+        const result = await this.api({ action: "files", repo: pr.repository, number: pr.number, provider: pr.provider, pr, version });
+        next = { key, list: result.items, warning: result.warning || (pr.changedFiles > result.items.length || String(pr.changedFilesLabel || "").endsWith("+") ? "The hosting service returned only part of this file list. View all changes on the hosting service." : null) };
       } catch (e) {
         next = { key, error: e.message };
       }
@@ -36,6 +39,7 @@ export const filesMethods = {
     const files = this.prFiles;
     if (!files || files.loading) return body.child(Message("Loading files…"));
     if (files.error) return body.child(Message(files.error, true));
+    if (files.warning) body.child(Message(files.warning, true));
     if (!files.list.length) return body.child(Message("No files changed."));
     const tree = this.fileLayout === "tree";
     body.child(
@@ -100,6 +104,10 @@ export const filesMethods = {
         .text_color(color)
         .child(text);
     return Row({ id: `pr-file-${file.filename}`, onClick: (cx) => this.openFile(file, cx) })
+      .on_mouse_down("right", (_e, cx) => {
+        cx.stop_propagation();
+        if (this.sp?.folder) showFileMenu(fileMenuTarget({ path: `${this.sp.folder.replace(/\/$/, "")}/${file.filename}`, root: this.sp.folder, on: this.sp.machine }, { space: this.sp.id }));
+      })
       .pl(indent(depth))
       .when(this.openFilePath === file.filename, (el) => el.bg(t.selected))
       .tooltip(file.filename)
@@ -122,11 +130,11 @@ export const filesMethods = {
             .child(parts.join("/")),
         ),
       )
-      .child(stat(`+${file.additions}`, t.ansi2))
-      .child(stat(`−${file.deletions}`, t.ansi1));
+      .child(stat(file.additions === null || file.additions === undefined ? "–" : `+${file.additions}`, t.ansi2))
+      .child(stat(file.deletions === null || file.deletions === undefined ? "–" : `−${file.deletions}`, t.ansi1));
   },
 
-  // Hands GitHub's patch to XMux Changes the way its own sidebar picks a file:
+  // Hands the provider's patch to XMux Changes the way its own sidebar picks a file:
   // the selection goes in shared state first, then its diff tab opens or is selected.
   // shortcut: depends on XMux Changes' shared("xmux-changes.diff-tabs") shape; change both together.
   openFile(file, cx) {
@@ -135,7 +143,7 @@ export const filesMethods = {
     const space = spaces().find((s) => s.active);
     if (!this.hasBetterChanges || !space || !this.sp?.folder) {
       // shortcut: opens the PR's Files page, not the file's anchor (a SHA-256 of its path).
-      cx.open_url(`${pr.url}/files`);
+      cx.open_url(file.web_url || `${pr.url}/${pr.provider?.kind === "gitlab" ? "diffs" : "files"}`);
       return cx.notify();
     }
     const source = { cwd: this.sp.folder, on: this.sp.machine ?? null };
@@ -143,12 +151,13 @@ export const filesMethods = {
       context: JSON.stringify(source),
       path: file.filename,
       scope: "patch",
-      commit: { short: `PR #${pr.number}` },
+      commit: { short: requestShort(pr) },
       file: {
         path: file.filename,
         add: file.additions,
         del: file.deletions,
         patch: file.patch ?? null,
+        warning: file.warning,
       },
       at: Date.now(),
     };

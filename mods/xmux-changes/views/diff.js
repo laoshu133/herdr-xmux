@@ -10,7 +10,7 @@ import { fileMenuTarget, showFileMenu } from "../shared/file-menu.js";
 import { fileIcon, isLight } from "../file-icons.js";
 
 const TAB_OPEN_TIMEOUT_MS = 1500;
-const NO_PATCH = "No text diff: GitHub leaves out binary and very large files.";
+const NO_PATCH = "No text diff: the hosting service omitted this binary, empty or very large diff.";
 // In widths of the code font's size, so a diff looks the same at any terminal size.
 const CHAR_WIDTH = 0.62;
 const GUTTERS = 10;
@@ -252,7 +252,7 @@ export const diffMethods = {
     // A diff handed over whole, as Branch PR does with GitHub's patch for a PR's file.
     // shortcut: Full file has no effect here, GitHub's patch has only its hunks.
     if (this.scope === "patch")
-      return { lines: file.patch?.split("\n") ?? [NO_PATCH] };
+      return { lines: file.patch?.split("\n") ?? [file.warning || NO_PATCH] };
     if (file.fresh) return this.readFreshFile(path, root, on);
     if (file.conflict) {
       const { rows, message } = await this.readConflict(path, root, on);

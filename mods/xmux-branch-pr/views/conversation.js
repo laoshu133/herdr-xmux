@@ -168,7 +168,7 @@ export const conversationMethods = {
         TextButton({
           id: `pr-reply-${entry.id}`,
           label: "Reply",
-          disabled: this.mutating || Boolean(thread && !thread.viewerCanReply),
+          disabled: this.mutating || this.pr.capabilities?.comment === false || Boolean(thread && !thread.viewerCanReply),
           onClick: (cx) =>
             this.compose(thread ? "reply" : "comment", thread?.id, null, cx, {
               entry: entry.id,
@@ -244,8 +244,8 @@ export const conversationMethods = {
                   .truncate()
                   .text_color(t.accent)
                   .font_family(codeFont())
-                  .tooltip(`${thread.path}:${thread.line ?? ""}`)
-                  .child(`${thread.path}:${thread.line ?? ""}`),
+                  .tooltip(thread.path ? `${thread.path}:${thread.line ?? ""}` : "General discussion")
+                  .child(thread.path ? `${thread.path}:${thread.line ?? ""}` : "General discussion"),
               ),
             )
             .when(!open, (el) =>
@@ -263,7 +263,8 @@ export const conversationMethods = {
       }
       body.child(block);
     });
-    body.child(this.newCommentBox(entries.length > 0));
+    if (pr.capabilities?.comment !== false) body.child(this.newCommentBox(entries.length > 0));
+    else body.child(Message("Commenting is unavailable with your current permissions."));
   },
 
   // Always here after the last comment, so saying something takes no extra click.

@@ -43,6 +43,7 @@ const DEFAULT_SETTINGS = {
   worktrees: { root: "~/.herdr/worktrees", open_with: "terminal" },
   logs: { keep_last: "60KB" },
   tools: { github: "gh", gitlab: "glab" },
+  hosts: [],
 };
 
 class PullRequests extends View {
@@ -87,9 +88,17 @@ class PullRequests extends View {
     readTextFile(`${appHome()}/mods/xmux-changes/mod.json`)
       .then((raw) => (this.hasBetterChanges = raw !== null))
       .catch(() => {});
-    this.search = InputState.new({ placeholder: "Search · #482, text, author:login" });
+    this.search = InputState.new({ placeholder: "Search · #123 / !123, text or URL" });
     this.search.on("change", (_e, cx) => {
       if (!this.restoringSearch) this.searchChanged(cx);
+    });
+    this.listAuthor = InputState.new({ placeholder: "Author username" });
+    this.listReviewer = InputState.new({ placeholder: "Reviewer username" });
+    for (const [field, scope] of [[this.listAuthor, "mine"], [this.listReviewer, "review-requested"]]) field.on("change", (_e, cx) => {
+      if (this.restoringSearch) return;
+      if (this.tab === scope) this.tab = "all";
+      this.filterChanged = true;
+      this.searchChanged(cx);
     });
     this.editor = TextareaState.new({ placeholder: "Write a comment…", rows: 4 });
     this.editor.on("change", (_e, cx) => {
@@ -123,6 +132,8 @@ class PullRequests extends View {
         !this.viewWasSaved &&
         this.tab === DEFAULT_SETTINGS.list.default.tab &&
         this.state === DEFAULT_SETTINGS.list.default.state;
+      const connectionChanged = JSON.stringify([settings.tools, settings.hosts]) !== JSON.stringify([DEFAULT_SETTINGS.tools, DEFAULT_SETTINGS.hosts]);
+      if (connectionChanged && this.sp?.folder) this.changeSpace(this.sp, this.spaceKey, cx);
       const { tab, state } = settings.list.default;
       if (untouched && (tab !== this.tab || state !== this.state)) {
         this.tab = tab;
@@ -185,7 +196,7 @@ class PullRequests extends View {
 
   render() {
     const root = Panel({ id: "pr-root" });
-    const problem = providerProblem(this.error, this.provider);
+    const problem = providerProblem(this.error, this.pr?.provider ?? this.pendingPR?.provider ?? this.provider);
     if (problem) return this.renderProviderProblem(root, problem);
     if (this.pr) return this.renderDetail(root);
     return this.opening ? this.renderOpening(root) : this.renderList(root);

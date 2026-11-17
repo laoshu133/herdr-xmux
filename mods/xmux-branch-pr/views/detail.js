@@ -12,7 +12,7 @@ import {
   prStatus,
   stateEvents,
   who,
-  providerName,
+  providerName, providerIcon, requestNumber, requestName, requestKey,
 } from "../github/model.js";
 import { agentName } from "../actions/agents.js";
 import { stateIcon } from "./list.js";
@@ -56,17 +56,21 @@ export const detailMethods = {
     root.child(this.sectionTabs(pr));
     if (this.section === "conversation") root.child(this.conversationFilters(pr));
     const body = v_flex()
-      .id(`pr-detail-${pr.repository}-${pr.id}-${this.section}`)
+      .id(`pr-detail-${requestKey(pr)}-${this.section}`)
       .flex_1()
       .min_w(0)
       .min_h(0)
       .overflow_y_scroll()
       .p(6);
-    if (this.section === "checks") body.child(this.checksView(pr));
+    const sectionState = this.sectionLoads?.[this.section];
+    if (sectionState?.error) body.child(Message(sectionState.error, true));
+    if (pr.provider?.kind === "gitlab" && ["checks", "conversation"].includes(this.section) && !pr.loaded?.[this.section])
+      body.child(Message(sectionState?.loading ? "Loading…" : "Content is unavailable. Refresh to retry."));
+    else if (this.section === "checks") body.child(this.checksView(pr));
     else if (this.section === "files") this.filesView(body);
     else if (this.section === "conversation") this.conversationView(body, pr);
     else this.overview(body, pr);
-    root.child(scrollFrame(`pr-detail-${pr.repository}-${pr.id}-${this.section}`, body));
+    root.child(scrollFrame(`pr-detail-${requestKey(pr)}-${this.section}`, body));
     // A handoff of several comments. Docked below the scroll area: gpui-kit can only scroll a virtual list from code.
     if (this.composer && !this.composer.entry) root.child(this.dockedComposer());
     return root.child(this.footer());
@@ -78,7 +82,7 @@ export const detailMethods = {
     return IconButton({
       id: "pr-back",
       icon: "chevron-left",
-      label: "Back to pull requests",
+      label: `Back to ${requestName(this.pr?.provider ?? this.provider, true)}`,
       disabled: this.mutating,
       onClick: (cx) => this.backToList(cx),
     });
@@ -113,9 +117,9 @@ export const detailMethods = {
       .border_color(t.border)
       .role("tab_list")
       .child(tab("overview", "Overview"))
-      .child(tab("conversation", "Comments", conversationEntries(pr).length))
-      .child(tab("checks", "Checks", summary ? null : 0, summary && this.checkIcon(summary, t)))
-      .child(tab("files", "Files", pr.changedFiles ?? 0));
+      .child(tab("conversation", pr.provider?.kind === "gitlab" ? "Discussions" : "Conversation", pr.loaded?.conversation === false ? null : conversationEntries(pr).length))
+      .child(tab("checks", pr.provider?.kind === "gitlab" ? "Pipelines" : "Checks", pr.loaded?.checks === false || summary ? null : 0, summary && this.checkIcon(summary, t)))
+      .child(tab("files", "Files", pr.changedFilesLabel ?? pr.changedFiles));
   },
 
   // Fixed above the tabs, so what to do next stays in sight.
@@ -124,6 +128,9 @@ export const detailMethods = {
   about(pr) {
     const t = theme();
     const actions = this.actionsMenu(pr);
+    const source = pr.headRepository?.nameWithOwner && pr.headRepository.nameWithOwner !== pr.repository
+      ? `${pr.headRepository.nameWithOwner}:${pr.headRefName}` : pr.headRefName;
+    const branches = `${source} → ${pr.baseRefName}`;
     return v_flex()
       .id("pr-about")
       .flex_none()
@@ -145,14 +152,14 @@ export const detailMethods = {
               .gap(6)
               .child(div().min_w(0).font_medium().whitespace_normal().child(pr.title))
               .child(
-                div().flex_none().text_color(t.dim).font_family(codeFont()).child(`#${pr.number}`),
+                div().flex_none().text_color(t.dim).font_family(codeFont()).child(requestNumber(pr)),
               ),
           )
           .child(
             IconButton({
               id: "pr-detail-provider",
-              icon: "github",
-              label: `Open on ${providerName(this.provider)}`,
+              icon: providerIcon(pr.provider),
+              label: `Open on ${providerName(pr.provider)}`,
               onClick: (cx) => cx.open_url(pr.url),
             }).mr(-6),
           ),
@@ -169,12 +176,14 @@ export const detailMethods = {
               .truncate()
               .text_size(TEXT.caption)
               .text_color(t.dim)
-              .tooltip(`${pr.headRefName} → ${pr.baseRefName}`)
-              .child(`${who(pr)} · ${pr.headRefName} → ${pr.baseRefName}`),
+              .tooltip(branches)
+              .child(`${who(pr)} · ${branches}`),
           )
           .when(Boolean(actions), (el) => el.child(actions))
           .when(pr.state === "MERGED", (el) => el.child(this.mergedBadge(t))),
       )
+      .when(Boolean(pr.labels?.length), el => el.child(div().text_size(TEXT.caption).text_color(t.dim)
+        .whitespace_normal().child(pr.labels.map(l => typeof l === "string" ? l : l.name).join(" · "))))
       .when(pr.state === "OPEN", (el) => el.child(this.blockedBy(pr)));
   },
 
@@ -244,6 +253,17 @@ export const detailMethods = {
   },
 
   overview(body, pr) {
+    if (pr.mergePolicyUnavailable) body.child(Message(pr.mergePolicyUnavailable));
+    if (pr.policyError) body.child(Message(pr.policyError, true));
+    if (pr.permissionError) body.child(Message(pr.permissionError, true));
+    if (pr.approvalRulesError) body.child(Message(pr.approvalRulesError));
+    if (pr.approvalsError) body.child(Message(pr.approvalsError));
+    if (pr.capabilities?.merge === false) body.child(Message("Merge actions are unavailable with your current permissions. You can view the request on the hosting service."));
+    if (pr.provider?.kind === "gitlab" && pr.capabilities?.policyKnown) {
+      const policies = { merge: "Merge commit", rebase_merge: "Semi-linear history", ff: "Fast-forward" };
+      body.child(Message(`Merge policy: ${policies[pr.capabilities.mergeMethod]} · Squash ${pr.capabilities.squash === "always" ? "required" : pr.capabilities.squash === "never" ? "disabled" : "optional"}`));
+    }
+    if (pr.approvalRules?.length) body.child(Message(pr.approvalRules.map(r => `${r.approved ? "✓" : "○"} ${r.name}: ${r.required} required`).join(" · ")));
     this.agentRows(body);
     this.reviewerRows(body, pr);
     this.worktreeRows(body);
@@ -283,12 +303,12 @@ export const detailMethods = {
     if (!events.length || this.mutating) return null;
     return this.chooser({
       id: "pr-actions",
-      accessibilityLabel: "Actions for this pull request",
+      accessibilityLabel: `Actions for this ${requestName(pr.provider)}`,
       width: 220,
       trigger: MenuButton({ id: "pr-actions-trigger", label: "Actions" }),
       choices: events.map((id, i) => ({
         id,
-        label: STATE_CHANGES[id].label,
+        label: id === "auto" && pr.provider?.kind === "gitlab" ? "Merge when pipeline succeeds" : STATE_CHANGES[id].label,
         divided: i > 0 && (id === "close" || id === "reopen"),
       })),
       onChoose: (id, cx) => this.askStateChange(id, cx),
@@ -298,8 +318,11 @@ export const detailMethods = {
   stateChangeView(pr) {
     const t = theme();
     const change = this.stateChange;
-    if (!change || change.repo !== this.repo || change.number !== pr.number) return null;
-    const { label, question } = STATE_CHANGES[change.event];
+    if (!change || change.identity !== requestKey(pr)) return null;
+    const stateChange = STATE_CHANGES[change.event];
+    const label = change.event === "auto" && pr.provider?.kind === "gitlab" ? "Merge when pipeline succeeds" : stateChange.label;
+    const question = change.event === "auto" && pr.provider?.kind === "gitlab"
+      ? p => `Merge ${requestNumber(p)} when its pipeline succeeds and GitLab permits merging?` : stateChange.question;
     const squash = change.event === "squash";
     const merging = ["merge", "squash", "rebase"].includes(change.event);
     const warning = merging ? mergeBlockers(pr).map((b) => b.label) : [];
@@ -316,6 +339,7 @@ export const detailMethods = {
         .border_color(t.border)
         .bg(t.raised)
         .child(div().min_w(0).whitespace_normal().text_size(TEXT.small).child(question(pr)))
+        .child(div().text_size(TEXT.caption).text_color(t.dim).child(`${pr.provider.host}/${pr.repository} · ${change.head?.slice(0, 8) || ""}`))
         // GitHub merges past anything it doesn't require, so say so before it does.
         .when(warning.length > 0, (el) =>
           el.child(
@@ -395,7 +419,7 @@ export const detailMethods = {
     const open = pr.state === "OPEN";
     const action =
       decision && div().flex_none().text_color(t[decision.color]).child(decision.label);
-    const info = { key: "reviewers", label: "Reviewers", count: pr.reviewers?.length ?? 0, action };
+    const info = { key: "reviewers", label: pr.provider?.kind === "gitlab" ? "Reviewers / Approvals" : "Reviewers", count: pr.reviewers?.length ?? 0, action };
     this.group(body, info, (into) => {
       if (pr.reviewersError) into.child(Message("Could not read reviewers."));
       else if (!pr.reviewers?.length) into.child(Message("No reviewers yet."));
@@ -406,7 +430,7 @@ export const detailMethods = {
             .child(Icon(state.icon).text_color(t[state.color]).accessibility_label(state.label))
             .child(div().flex_1().min_w(0).truncate().tooltip(reviewer.login).child(reviewer.login))
             .child(div().flex_none().text_size(TEXT.caption).text_color(t.dim).child(state.label))
-            .when(open && reviewer.state !== "REQUESTED", (el) =>
+            .when(open && pr.capabilities?.reviewer !== false && reviewer.state !== "REQUESTED", (el) =>
               el.child(
                 IconButton({
                   id: `pr-reviewer-again-${reviewer.login}`,

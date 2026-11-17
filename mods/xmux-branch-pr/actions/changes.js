@@ -1,5 +1,6 @@
-// What this panel writes to GitHub, always from an explicit click: merging and
+// What this panel writes to the selected hosting service, always from an explicit click: merging and
 // closing, re-requesting a review, and comments, replies and resolving.
+import { requestKey, requestNumber, providerName } from "../github/provider.js";
 import { STATE_CHANGES } from "../github/model.js";
 
 export const changeMethods = {
@@ -8,13 +9,17 @@ export const changeMethods = {
   askStateChange(event, cx) {
     this.stateChange = {
       event,
+      identity: requestKey(this.pr),
+      provider: this.pr.provider,
       repo: this.pr.repository,
       number: this.pr.number,
       head: this.pr.headRefOid,
+      method: this.pr.mergeMethods?.[0],
+      id: this.pr.id,
     };
     if (event === "squash") {
       const { title, number, body } = this.pr;
-      const subject = `${title} (#${number})`;
+      const subject = `${title} (${requestNumber(this.pr)})`;
       this.squashMessage.set_value(body?.trim() ? `${subject}\n\n${body.trim()}` : subject);
       this.squashMessage.focus();
     }
@@ -24,7 +29,7 @@ export const changeMethods = {
 
   changeState(cx) {
     const change = this.stateChange;
-    if (!change || this.mutating) return;
+    if (!change || this.mutating || change.identity !== requestKey(this.pr)) return;
     const key = this.spaceKey;
     this.mutating = true;
     this.error = null;
@@ -33,20 +38,21 @@ export const changeMethods = {
       try {
         await this.api({
           action: "change-state",
+          provider: change.provider,
           repo: change.repo,
           number: change.number,
           event: change.event,
           head: change.head,
           ...(change.event === "squash" ? { body: this.squashMessage.value().trim() } : {}),
           ...(change.event === "auto"
-            ? { method: this.pr.mergeMethods?.[0] ?? "merge", id: this.pr.id }
+            ? { method: change.method ?? "merge", id: change.id }
             : {}),
         });
-        if (key !== this.spaceKey) return;
+        if (key !== this.spaceKey || change.identity !== requestKey(this.pr)) return;
         this.stateChange = null;
         this.notice = STATE_CHANGES[change.event].done;
         this.items = []; // the list shows this PR's old state until it reloads
-        this.openPR(change.number, cx, change.repo);
+        this.openPR(change.number, cx, change.repo, change.provider);
       } catch (e) {
         if (key === this.spaceKey)
           this.error = `${e.message}. Refresh before retrying if it may have gone through.`;
@@ -62,15 +68,17 @@ export const changeMethods = {
     const key = this.spaceKey;
     const repo = this.pr.repository;
     const number = this.pr.number;
+    const provider = this.pr.provider;
+    const identity = requestKey(this.pr);
     this.mutating = true;
     this.error = null;
     cx.notify();
     cx.spawn(async (cx) => {
       try {
-        await this.api({ action: "reviewer", repo, number, reviewer });
-        if (key !== this.spaceKey) return;
+        await this.api({ action: "reviewer", provider, repo, number, reviewer });
+        if (key !== this.spaceKey || identity !== requestKey(this.pr)) return;
         this.notice = `Asked ${reviewer} to review again.`;
-        this.openPR(number, cx, repo);
+        this.openPR(number, cx, repo, provider);
       } catch (e) {
         if (key === this.spaceKey) this.error = e.message;
       } finally {
@@ -84,7 +92,7 @@ export const changeMethods = {
     if (this.mutating) return;
     this.composer = { kind, thread, context, ...options };
     this.target = options.target ?? null;
-    this.draftKey = `pr-draft:${this.spaceKey}:${this.pr.repository}:${this.pr.id}:${kind}:${thread ?? "general"}:${options.entry ?? ""}:${options.target ?? ""}`;
+    this.draftKey = `pr-draft:v2:${this.spaceKey}:${requestKey(this.pr)}:${kind}:${thread ?? "general"}:${options.entry ?? ""}:${options.target ?? ""}`;
     const draft = localStorage.getItem(this.draftKey);
     const initial =
       kind === "agent"
@@ -121,14 +129,16 @@ export const changeMethods = {
     const key = this.spaceKey;
     const repo = this.pr.repository;
     const number = this.pr.number;
+    const provider = this.pr.provider;
+    const identity = requestKey(this.pr);
     const draft = this.draftKey;
     this.mutating = true;
     this.error = null;
     cx.notify();
     cx.spawn(async (cx) => {
       try {
-        await this.api({ action, repo, number, thread, body });
-        if (key !== this.spaceKey || repo !== this.pr?.repository || number !== this.pr?.number)
+        await this.api({ action, provider, repo, number, thread, body });
+        if (key !== this.spaceKey || identity !== requestKey(this.pr))
           return;
         if (saved) saved();
         else if (action === "comment" || action === "reply") {
@@ -136,8 +146,8 @@ export const changeMethods = {
           this.composer = null;
           this.draftKey = null;
         }
-        this.notice = "Saved to GitHub.";
-        this.openPR(number, cx, repo);
+        this.notice = `Saved to ${providerName(provider)}.`;
+        this.openPR(number, cx, repo, provider);
       } catch (e) {
         if (key === this.spaceKey)
           this.error = `${e.message}. Refresh before retrying if the request may have succeeded.`;

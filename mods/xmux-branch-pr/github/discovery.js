@@ -5,7 +5,7 @@ import { exec } from "herdr";
 import { cachedQuery } from "../shared/query-cache.js";
 import { rememberRoot } from "../shared/context.js";
 import { repositoryFromRemote, searchQuery } from "./model.js";
-import { resolveProvider } from "./provider.js";
+import { resolveProvider, decodeBinding, requestKey, repositoryKey } from "./provider.js";
 
 export const discoveryMethods = {
   changeSpace(sp, key, cx) {
@@ -49,6 +49,9 @@ export const discoveryMethods = {
     this.draftKey = null;
     this.jobs = {};
     this.logs = {};
+    this.prFiles = null;
+    this.sectionLoads = {};
+    this.stateChange = null;
     this.section = "overview";
     if (!sp?.folder) {
       this.listLoaded = true;
@@ -60,8 +63,8 @@ export const discoveryMethods = {
   },
 
   async detectRepo(sp) {
-    return cachedQuery(JSON.stringify(["detect-repo", sp.machine ?? null, sp.folder, this.settings.tools ?? null]), 300000, async () => {
-      const options = { cwd: sp.folder, on: sp.machine, timeout: 5000, tools: this.settings.tools };
+    return cachedQuery(JSON.stringify(["detect-repo", sp.machine ?? null, sp.folder, this.settings.tools ?? null, this.settings.hosts ?? []]), 300000, async () => {
+      const options = { cwd: sp.folder, on: sp.machine, timeout: 5000, tools: this.settings.tools, hosts: this.settings.hosts };
       const remote = (name) => exec("git", ["remote", "get-url", name], options);
       let result = await remote("upstream");
       if (result.code !== 0) {
@@ -90,8 +93,8 @@ export const discoveryMethods = {
   openSoleBranchPR(cx) {
     const sole = this.soleBranchPR();
     if (!sole || this.pr || this.opening || this.detailLoading) return;
-    this.opening = { number: sole.number };
-    this.openPR(sole.number, cx, sole.repository ?? this.repo);
+    this.opening = { number: sole.number, provider: sole.provider };
+    this.openPR(sole.number, cx, sole.repository ?? this.repo, sole.provider);
   },
 
   // The PRs from this checkout's branch. A worktree made for a PR records its exact
@@ -101,7 +104,7 @@ export const discoveryMethods = {
     const token = ++this.branchToken;
     const sp = this.sp;
     const key = this.spaceKey;
-    const options = { cwd: sp.folder, on: sp.machine, timeout: 5000, tools: this.settings.tools };
+    const options = { cwd: sp.folder, on: sp.machine, timeout: 5000, tools: this.settings.tools, hosts: this.settings.hosts };
     this.branchLoading = true;
     cx.spawn(async (cx) => {
       try {
@@ -118,49 +121,34 @@ export const discoveryMethods = {
           options,
         );
         if (token !== this.branchToken || key !== this.spaceKey) return;
-        const provider = this.provider;
-        const association = /^([\w.-]+\/[\w.-]+)#([1-9][0-9]*)$/.exec(binding.stdout?.trim() ?? "");
+        const association = decodeBinding(binding.stdout?.trim());
         if (association) {
-          const remotes = await this.discoverRemotes(sp);
+          const linked = await this.api({ action: "detail", repo: association.repo,
+            number: association.number, provider: association.provider }, sp);
           if (token !== this.branchToken || key !== this.spaceKey) return;
-          const remote = remotes.find((r) => r.repo === association[1]);
-          const linked = await this.api(
-            { action: "detail", repo: association[1], number: Number(association[2]),
-              provider: remote?.provider ? { kind: remote.provider, host: remote.host } : provider },
-            sp,
-          );
-          if (token !== this.branchToken || key !== this.spaceKey) return;
-          this.branchPRs = [{ ...linked, repository: association[1] }];
+          this.branchPRs = [linked];
           return;
         }
         const remotes = await this.discoverRemotes(sp);
         if (token !== this.branchToken || key !== this.spaceKey) return;
-        const repositories = [...new Set(remotes.map((r) => r.repo).filter(Boolean))];
+        const repositories = [...new Map(remotes.filter(r => r.repo).map(r =>
+          [repositoryKey({ kind: r.provider, host: r.host }, r.repo), r])).values()];
         const results = await Promise.allSettled(
-          repositories.map((repo) => {
-            const remote = remotes.find((r) => r.repo === repo);
-            return this.api(
-              { action: "branch", repo, provider: remote?.provider ? { kind: remote.provider, host: remote.host } : provider, branch: this.branch },
-              sp,
-            );
-          }),
+          repositories.map(remote => this.api({ action: "branch", repo: remote.repo,
+            provider: { kind: remote.provider, host: remote.host }, branch: this.branch }, sp)),
         );
         if (token !== this.branchToken || key !== this.spaceKey) return;
-        const failures = results.filter((r) => r.status === "rejected");
-        // Remote URLs may differ in case from the name the host reports.
-        const ours = new Set(repositories.map((repo) => repo.toLowerCase()));
-        const matches = results
-          .filter((r) => r.status === "fulfilled")
-          .flatMap((r) => r.value.items)
-          .filter((p) =>
-            ours.has(
-              String(p.repository ?? p.headRepository?.nameWithOwner ?? "").toLowerCase(),
-            ),
-          );
-        this.branchPRs = [...new Map(matches.map((p) => [p.id, p])).values()].sort(
+        const failures = results.filter(r => r.status === "rejected");
+        // Same-named branches in other forks must not attach to this checkout.
+        const ours = new Set(repositories.map(r => repositoryKey({ kind: r.provider, host: r.host }, r.repo).toLowerCase()));
+        const matches = results.filter(r => r.status === "fulfilled").flatMap(r => r.value.items)
+          .filter(p => p.headRefName === this.branch && ours.has(repositoryKey(p.provider, p.headRepository?.nameWithOwner).toLowerCase()));
+        this.branchPRs = [...new Map(matches.map((p) => [requestKey(p), p])).values()].sort(
           (a, b) =>
             (b.state === "OPEN") - (a.state === "OPEN") || b.updatedAt.localeCompare(a.updatedAt),
         );
+        const warnings = results.filter(r => r.status === "fulfilled").map(r => r.value.warning).filter(Boolean);
+        if (warnings.length) this.notice = warnings.join(" ");
         if (failures.length) {
           this.notice = `${failures.length} remote repositories could not be checked.`;
           if (!this.branchPRs.length) this.error = failures[0].reason.message;
@@ -184,10 +172,10 @@ export const discoveryMethods = {
   },
 
   async discoverRemotes(sp) {
-    return cachedQuery(JSON.stringify(["remotes", sp.machine ?? null, sp.folder, this.settings.tools ?? null]), 300000, async () => {
+    return cachedQuery(JSON.stringify(["remotes", sp.machine ?? null, sp.folder, this.settings.tools ?? null, this.settings.hosts ?? []]), 300000, async () => {
       const top = await exec("git", ["rev-parse", "--show-toplevel"], { cwd: sp.folder, on: sp.machine, timeout: 5000 });
       if (top.code === 0) rememberRoot(sp.folder, top.stdout.trim(), sp.machine);
-      const options = { cwd: sp.folder, on: sp.machine, timeout: 5000, tools: this.settings.tools };
+      const options = { cwd: sp.folder, on: sp.machine, timeout: 5000, tools: this.settings.tools, hosts: this.settings.hosts };
       const result = await exec("git", ["remote"], options);
       if (result.code !== 0) throw new Error("Cannot read Git remotes for this directory.");
       const names = [...new Set(result.stdout.trim().split(/\r?\n/).filter(Boolean))].sort();
@@ -215,14 +203,27 @@ export const discoveryMethods = {
     const selected = this.remotes.find((r) => r.name === name && r.repo);
     if (!selected || this.mutating) return;
     localStorage.setItem(this.remotePreferenceKey(), name);
+    this.leavePR();
+    this.rememberView();
     this.repoToken++;
     this.listToken++;
+    this.detailToken++;
+    this.searchToken++;
     this.repoLoading = false;
+    this.detailLoading = false;
     this.remote = name;
     this.repo = selected.repo;
     this.provider = { kind: selected.provider, host: selected.host };
-    this.notice = null;
-    this.error = null;
+    this.pr = this.opening = this.pendingPR = this.composer = this.stateChange = this.worktreeForm = null;
+    this.draftKey = this.commentKey = null;
+    this.jobs = {};
+    this.logs = {};
+    this.sectionLoads = {};
+    this.prFiles = null;
+    this.items = [];
+    this.listLoaded = false;
+    this.notice = this.error = null;
+    this.restoreView(this.repo);
     this.loadList(cx);
     cx.notify();
   },
@@ -246,8 +247,8 @@ export const discoveryMethods = {
         const preference = localStorage.getItem(this.remotePreferenceKey());
         const selected =
           remotes.find((r) => r.name === preference && r.repo) ??
-          remotes.find((r) => r.name === "upstream" && r.repo === defaultProvider?.repo && r.provider === defaultProvider?.kind) ??
-          remotes.find((r) => r.repo && r.repo === defaultProvider?.repo && r.provider === defaultProvider?.kind) ??
+          remotes.find((r) => r.name === "upstream" && r.repo === defaultProvider?.repo && r.provider === defaultProvider?.kind && r.host === defaultProvider?.host) ??
+          remotes.find((r) => r.repo && r.repo === defaultProvider?.repo && r.provider === defaultProvider?.kind && r.host === defaultProvider?.host) ??
           remotes.find((r) => r.repo);
         if (!selected) throw new Error("No GitHub or GitLab remote found for this directory.");
         if (preference && !remotes.some((r) => r.name === preference && r.repo))

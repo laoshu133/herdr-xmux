@@ -17,6 +17,7 @@ import {
   layout,
   focused,
 } from "herdr";
+import { requestNumber } from "../shared/provider.js";
 import { PRStatusObserver, prPlaceKey, prAppearance } from "../git/pr-status.js";
 import { spaceFolder, checkoutKey, readCheckout } from "../git/checkouts.js";
 import { loadSettings, duration } from "../settings.js";
@@ -589,7 +590,7 @@ export class Spaces {
       .text_size(TEXT.caption)
       .cursor_pointer()
       .tooltip(
-        `${pr.repository}#${pr.number} · ${status.label}\n${pr.title}\n${url}\n${shortcut}-click to open`,
+        `${pr.provider?.host || "github.com"}/${pr.repository}${requestNumber(pr)} · ${status.label}\n${pr.title}\n${url}\n${shortcut}-click to open`,
       )
       .on_mouse_down("left", (event, cx) => {
         if (!this.isPRLinkClick(event)) return;
@@ -605,7 +606,7 @@ export class Spaces {
         cx.stop_propagation();
         cx.open_url(url);
       })
-      .child(status.ready ? `#${pr.number} ✓` : `#${pr.number}`);
+      .child(status.ready ? `${requestNumber(pr)} ✓` : requestNumber(pr));
   }
 
   prBadge(w, t, compact = false) {
@@ -621,7 +622,7 @@ export class Spaces {
           .gap(3)
           .items_center()
           .text_color(status.color)
-          .tooltip(`${pr.repository}#${pr.number} · ${status.label}\n${pr.title}`)
+          .tooltip(`${pr.provider?.host || "github.com"}/${pr.repository}${requestNumber(pr)} · ${status.label}\n${pr.title}`)
           .child(Icon(`${status.icon}`).size(13).flex_none())
           .when(!compact, (el) => el.child(this.prNumber(w, pr, status))),
       );
@@ -634,7 +635,7 @@ export class Spaces {
           .tooltip(
             prs
               .slice(1)
-              .map((pr) => `${pr.repository}#${pr.number} · ${pr.title}`)
+              .map((pr) => `${pr.provider?.host || "github.com"}/${pr.repository}${requestNumber(pr)} · ${pr.title}`)
               .join("\n"),
           )
           .child(`+${prs.length - 1}`),
@@ -652,8 +653,8 @@ export class Spaces {
       .truncate()
       .text_size(TEXT.caption)
       .text_color(t.dim)
-      .tooltip(`PR refresh failed: ${status.error}`)
-      .child(status.prs.length ? "PR may be stale" : "PR unavailable");
+      .tooltip(`PR / MR refresh failed: ${status.error}`)
+      .child(status.prs.length ? "PR / MR may be stale" : "PR / MR unavailable");
   }
   // ── Expanded/compact rows and sidebar rendering ──────────────────────────
 

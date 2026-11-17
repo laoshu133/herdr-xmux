@@ -184,3 +184,55 @@ configured SSH target for remote files.
 Agent tabs follow Core's current task title, including inactive remote tabs.
 Legacy labels matching the agent's program name are treated as automatic titles;
 other explicit tab names take precedence. New agents start without a fixed tab name.
+
+## Pull and merge requests
+
+The `PRs` entry uses one panel for GitHub Pull Requests and GitLab Merge
+Requests. Its mod ID remains `xmux-branch-pr`. GitHub uses the bundled helper
+and `gh`; GitLab uses REST API v4 through `glab api`. Hosting requests run
+locally with the CLI's existing authentication, including for remote spaces.
+Git discovery, fetch and worktree creation run on the checkout's machine.
+No hosting token is stored by XMux.
+
+The adapters share repository/request identities and UI contracts, but keep
+native review, approval, CI and merge semantics. GitLab displays `!IID`,
+Discussions and Pipelines. Project policy controls merge methods and squash;
+rebasing the source branch is a separate operation. Missing permissions,
+unsupported approval endpoints and unavailable/truncated diffs are reported
+explicitly. Creating a request and managing reviewers remain available on the
+hosting service; there is no local creation or formal review editor.
+
+Repository identity includes platform, API hostname and full project path;
+request identity adds the PR number or MR IID. Lists, drafts, saved views and
+worktree bindings cannot cross hosts. New worktree bindings use versioned JSON
+in `branch.<branch>.herdr-pr`; old `owner/repo#number` GitHub bindings still
+work. Fetches use the target project's PR/MR head ref and verify its SHA before
+creating a worktree. Worktree folders also include platform and host.
+
+The panel caches lists for 60 seconds and details/discussions/CI for 30 seconds.
+GitLab Discussions and Pipelines load on first use; job traces load on demand.
+Versioned diffs are cached by source and base commits. Cached content remains
+visible during background refreshes; hidden panels stop polling. Writes
+invalidate the affected repository, and write requests are never retried
+automatically. Refresh explicitly clears hosting metadata and data caches;
+use it after changing CLI accounts or project policies. The sidebar shares
+provider discovery and reads the panel's CLI/host settings.
+
+Optional `settings` in `mods/xmux-branch-pr/mod.json`:
+
+```json
+{
+  "tools": {
+    "github": "/path/to/gh",
+    "gitlab": "/path/to/glab"
+  },
+  "hosts": [
+    { "remote": "git-company", "kind": "gitlab", "host": "code.company.com" }
+  ]
+}
+```
+
+The example maps `git@git-company:group/subgroup/project.git` to the GitLab API
+at `code.company.com`. Ordinary github.com/gitlab.com remotes require no
+mapping; unknown hosts are probed with the locally authenticated CLI. Log in
+with `gh auth login --hostname HOST` or `glab auth login --hostname HOST`.

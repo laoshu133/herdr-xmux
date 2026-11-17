@@ -2,7 +2,7 @@
 import { div } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar } from "gpui-base";
 import { theme } from "herdr";
-import { cardChecks, prStatus, repoUrl, timeAgo, who, providerName } from "../github/model.js";
+import { cardChecks, prStatus, repoUrl, timeAgo, who, providerName, providerIcon, requestNumber, requestName, requestKey } from "../github/model.js";
 import {
   TEXT,
   Busy,
@@ -23,10 +23,10 @@ const scrollFrame = (id, content) =>
   v_flex().relative().flex_1().min_h(0).child(content)
     .child(Scrollbar.vertical(id).mode("scrolling").absolute().inset_0());
 
-const SCOPES = [
-  { id: "all", label: "All PRs" },
-  { id: "mine", label: "Created" },
-  { id: "involved", label: "Involved" },
+const scopes = (provider) => [
+  { id: "all", label: provider?.kind === "gitlab" ? "All MRs" : "All PRs" },
+  { id: "mine", label: "Created by me" },
+  { id: "review-requested", label: "Review requested" },
 ];
 const STATES = [
   { id: "open", label: "Open" },
@@ -86,7 +86,7 @@ export const listMethods = {
     return IconButton({
       id: "pr-refresh",
       icon: "refresh",
-      label: "Refresh pull requests",
+      label: `Refresh ${requestName(this.pr?.provider ?? this.provider, true)}`,
       spinning: Boolean(this.busy),
       disabled: this.busy || this.mutating,
       onClick: (cx) => this.refresh(cx, true),
@@ -114,7 +114,7 @@ export const listMethods = {
 
   listHeader() {
     const more = Object.keys(this.cursors).length > 0 ? "+" : "";
-    return PanelHeader()
+    const header = PanelHeader()
       .child(
         h_flex()
           .flex_1()
@@ -137,7 +137,7 @@ export const listMethods = {
             HeaderTab({
               id: "pr-view-all",
               label: "Repo",
-              // GitHub's count for the current filter; Involved has none, so what's loaded.
+              // Use a real total where supplied; otherwise show the loaded count.
               count: this.total ?? `${this.items.length}${more}`,
               loading: this.repoCountPending(),
               disabled: !this.listLoaded,
@@ -147,9 +147,19 @@ export const listMethods = {
           ),
       )
       .child(this.refreshButton());
+    const branchProviders = this.view === "branch" && !this.pr ? [...new Map(this.branchPRs.map(p => [`${p.provider.kind}:${p.provider.host}`, p.provider])).values()] : [];
+    const provider = this.pr?.provider ?? (branchProviders.length === 1 ? branchProviders[0] : this.provider);
+    return v_flex().flex_none().child(
+      h_flex().px(14).pt(8).gap(6).items_center()
+        .child(Icon(providerIcon(provider)))
+        .child(div().flex_none().text_size(TEXT.small).font_medium().child(branchProviders.length > 1 ? "Pull / Merge Requests" : provider?.kind === "gitlab" ? "Merge Requests" : "Pull Requests"))
+        .child(div().flex_1().min_w(0).truncate().text_size(TEXT.caption).text_color(theme().dim)
+          .tooltip(`${provider?.host || ""}/${this.pr?.repository || this.repo}`).child(branchProviders.length > 1 ? "Multiple repositories" : provider?.host ? `${provider.host}/${this.pr?.repository || this.repo}` : ""))
+    ).child(header);
   },
 
   filters() {
+    const SCOPES = scopes(this.provider);
     const choosers = h_flex()
       .gap(6)
       .items_center()
@@ -157,7 +167,7 @@ export const listMethods = {
         this.chooser({
           id: "pr-scope",
           label: labelOf(SCOPES, this.tab),
-          accessibilityLabel: "Whose pull requests",
+          accessibilityLabel: `Whose ${requestName(this.provider, true)}`,
           anchor: "top_left",
           width: 130,
           choices: SCOPES,
@@ -165,6 +175,10 @@ export const listMethods = {
           triggerFocus: this.scopeTrigger,
           onChoose: (tab, cx) => {
             this.tab = tab;
+            this.restoringSearch = true;
+            if (tab === "mine") this.listAuthor.set_value("");
+            if (tab === "review-requested") this.listReviewer.set_value("");
+            this.restoringSearch = false;
             this.loadList(cx);
           },
         }),
@@ -173,7 +187,7 @@ export const listMethods = {
         this.chooser({
           id: "pr-state",
           label: labelOf(STATES, this.state),
-          accessibilityLabel: "Pull request state",
+          accessibilityLabel: `${requestName(this.provider)} state`,
           anchor: "top_left",
           width: 120,
           choices: STATES,
@@ -196,7 +210,7 @@ export const listMethods = {
           choices: this.remotes.map((r) => ({
             id: r.name,
             label: r.name,
-            detail: r.repo || "Not a GitHub or GitLab remote",
+            detail: r.repo ? `${r.host}/${r.repo}` : "Not a GitHub or GitLab remote",
             disabled: !r.repo,
           })),
           value: this.remote,
@@ -208,11 +222,13 @@ export const listMethods = {
       choosers.child(
         IconButton({
           id: "pr-repo-provider",
-          icon: "github",
+          icon: providerIcon(this.provider),
           label: `Open ${this.repo} on ${providerName(this.provider)}`,
           onClick: (cx) => cx.open_url(repoUrl(this.repo, this.provider)),
         }),
       );
+    if (this.repo) choosers.child(IconButton({ id: "pr-create", icon: "plus", label: `Create on ${providerName(this.provider)}`,
+      onClick: cx => cx.open_url(`${repoUrl(this.repo, this.provider)}/${this.provider?.kind === "gitlab" ? "-/merge_requests/new" : "compare"}`) }));
     const t = theme();
     return v_flex()
       .id("pr-filter-row")
@@ -223,17 +239,20 @@ export const listMethods = {
       .border_b(1)
       .border_color(t.border)
       .child(h_flex().child(TextField({ id: "pr-search-input", state: this.search })))
+      .child(h_flex().gap(6)
+        .child(div().flex_1().min_w(0).child(TextField({ id: "pr-list-author", state: this.listAuthor, height: 26 })))
+        .child(div().flex_1().min_w(0).child(TextField({ id: "pr-list-reviewer", state: this.listReviewer, height: 26 }))))
       .child(choosers);
   },
 
   prRow(p, t, where) {
     const checks = cardChecks(p);
     return PRRow({
-      id: `pr-${p.id}`,
+      id: `pr-${requestKey(p)}`,
       icon: stateIcon(prStatus(p), t),
       title: p.title,
-      number: `#${p.number}`,
-      meta: `${who(p)} · ${timeAgo(p.updatedAt)} · ${where}`,
+      number: requestNumber(p),
+      meta: `${who(p)} · ${timeAgo(p.updatedAt)} · ${p.provider?.host || ""}/${where}`,
       checks:
         checks &&
         Icon(`check-${checks.kind}`, 14)
@@ -245,22 +264,22 @@ export const listMethods = {
         this.jobs = {};
         this.logs = {};
         this.notice = null;
-        this.opening = { number: p.number };
-        this.openPR(p.number, cx, p.repository ?? this.repo);
+        this.opening = { number: p.number, provider: p.provider };
+        this.openPR(p.number, cx, p.repository ?? this.repo, p.provider);
         cx.notify();
       },
     });
   },
 
   branchList(t) {
-    if (!this.branchPRs.length && this.branchLoading) return Busy("Loading this branch's PRs…");
+    if (!this.branchPRs.length && this.branchLoading) return Busy("Loading this branch’s PRs / MRs…");
     const list = v_flex().id("pr-branch-list").flex_1().min_h(0).overflow_y_scroll().p(6).gap(2);
     if (!this.branchPRs.length)
       list.child(
         Message(
           this.branch
-            ? `No pull requests from ${this.branch}.`
-            : "Check out a branch to see its pull requests.",
+            ? `No PRs / MRs from ${this.branch}.`
+            : "Check out a branch to see its PRs / MRs.",
         ),
       );
     return scrollFrame("pr-branch-list", list.children(this.branchPRs.map((p) => this.prRow(p, t, p.repository ?? this.repo))));
@@ -269,12 +288,12 @@ export const listMethods = {
   // The selected provider owns matching, including qualifiers where supported.
   moreLabel() {
     const left = (this.total ?? 0) - this.items.length;
-    if (left <= 0) return "+ more";
+    if (left <= 0) return "Load more";
     return `+ ${Math.min(left, this.settings.list.page_size)} more`;
   },
 
   allList(t) {
-    if (!this.items.length && this.busy) return Busy("Loading pull requests…");
+    if (!this.items.length && this.busy) return Busy(`Loading ${requestName(this.provider, true)}…`);
     const list = v_flex()
       .id(`pr-list-${this.listKey()}`)
       .flex_1()
@@ -284,7 +303,7 @@ export const listMethods = {
       .gap(2);
     if (!this.items.length)
       list.child(
-        Message(!this.repo ? "Open a folder with a GitHub or GitLab remote." : "No matching pull requests."),
+        Message(!this.repo ? "Open a folder with a GitHub or GitLab remote." : `No matching ${requestName(this.provider, true)}.`),
       );
     list.children(this.items.map((p) => this.prRow(p, t, p.headRefName)));
     if (Object.keys(this.cursors).length > 0)
@@ -323,7 +342,7 @@ export const listMethods = {
         .gap(12)
         .items_center()
         .justify_center()
-        .child(Icon("github", 24).text_color(t.dim))
+        .child(Icon(providerIcon(this.provider), 24).text_color(t.dim))
         .child(div().font_medium().child(problem.title))
         .child(
           div()
@@ -369,7 +388,7 @@ export const listMethods = {
     this.messages(root);
     if (this.showsBack(this.opening.number))
       root.child(h_flex().flex_none().px(8).py(5).child(this.backButton()));
-    root.child(Busy(`Loading #${this.opening.number}…`));
+    root.child(Busy(`Loading ${requestNumber(this.opening)}…`));
     return root.child(this.footer());
   },
 
@@ -391,7 +410,8 @@ export const listMethods = {
           .flex_1()
           .min_w(0)
           .truncate()
-          .child(this.branch || (this.repoLoading ? "Finding repository…" : "No repository")),
+          .tooltip(this.repo ? `${this.provider?.host}/${this.repo}` : "")
+          .child(this.view === "all" && this.listLoaded ? `${this.items.length} loaded${this.total !== null && this.total !== undefined ? ` / ${this.total}` : ""}` : this.branch || (this.repoLoading ? "Finding repository…" : "No repository")),
       )
       .child(
         div()
