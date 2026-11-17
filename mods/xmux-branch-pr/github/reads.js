@@ -5,6 +5,8 @@ import { duration, size } from "../settings.js";
 import { runIdOf, searchQuery } from "./model.js";
 import { gitlabApi } from "../gitlab/cli.js";
 
+import { cachedQuery, invalidateQueries, peekQuery, queryKey } from "../shared/query-cache.js";
+
 const SEARCH_DEBOUNCE_MS = 450;
 const LOG_TAIL_BYTES = 60000;
 
@@ -30,29 +32,49 @@ export const readMethods = {
     cx.notify();
   },
 
-  async api(request, sp = this.sp) {
-    request = { tools: this.settings.tools, ...request };
+  apiKey(request, sp = this.sp) {
     const provider = request.provider ?? this.provider;
-    if (provider?.kind === "gitlab") return gitlabApi(request, sp, provider);
-    // GitHub auth and the helper live on this computer, including for remote spaces.
-    const result = await exec(
-      `${appHome()}/mods/xmux-branch-pr/bin/herdr-pr`,
-      [JSON.stringify(request)],
-      { cwd: sp?.machine ? undefined : sp?.folder },
-    );
-    let data;
-    try {
-      data = JSON.parse(result.stdout);
-    } catch {
-      throw new Error(result.stderr || "PR helper returned invalid JSON");
+    const { provider: _provider, tools: _tools, ...payload } = request;
+    return queryKey(["pr-api", sp?.machine ?? null, provider?.kind, provider?.host,
+      this.settings.tools ?? null, { ...payload, repo: request.repo ?? provider?.repo ?? this.repo }]);
+  },
+
+  async api(request, sp = this.sp) {
+    const provider = request.provider ?? this.provider;
+    request = { ...request, provider, repo: request.repo ?? provider?.repo ?? this.repo };
+    request = { tools: this.settings.tools, ...request };
+    const read = ["list", "detail", "branch", "files", "jobs", "logs", "viewer"].includes(request.action);
+    const load = async () => {
+      const provider = request.provider ?? this.provider;
+      if (provider?.kind === "gitlab") return gitlabApi(request, sp, provider);
+      // GitHub auth and the helper live on this computer, including for remote spaces.
+      const result = await exec(
+        `${appHome()}/mods/xmux-branch-pr/bin/herdr-pr`,
+        [JSON.stringify(request)],
+        { cwd: sp?.machine ? undefined : sp?.folder, on: null, timeout: read ? 15000 : 30000 },
+      );
+      let data;
+      try {
+        data = JSON.parse(result.stdout);
+      } catch {
+        throw new Error(result.stderr || "PR helper returned invalid JSON");
+      }
+      if (result.code !== 0 || data.error)
+        throw new Error(data.error || result.stderr || `GitHub request failed`);
+      return data;
+    };
+    if (!read) {
+      const data = await load();
+      invalidateQueries((key) => key.startsWith('["pr-api"'));
+      this.cache = {};
+      return data;
     }
-    if (result.code !== 0 || data.error)
-      throw new Error(data.error || result.stderr || `GitHub request failed`);
-    return data;
+    const ttl = request.action === "detail" || request.action === "jobs" ? 30000 : 60000;
+    return cachedQuery(this.apiKey(request, sp), ttl, load);
   },
 
   listKey() {
-    return `${this.spaceKey}:${this.repo}:${this.tab}:${this.state}:${this.serverSearch ?? ""}`;
+    return JSON.stringify([this.sp?.machine, this.provider?.kind, this.provider?.host, this.repo, this.tab, this.state, this.serverSearch ?? ""]);
   },
 
   loadList(cx, more = false) {
@@ -93,6 +115,7 @@ export const readMethods = {
         this.items = [...merged.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
         if (!keep) this.cursors = data.cursors;
         this.total = data.total ?? null;
+        if (Object.keys(this.cache).length > 64) delete this.cache[Object.keys(this.cache)[0]];
         this.cache[key] = { items: this.items, cursors: this.cursors, total: this.total };
         this.refreshed = Date.now();
         this.lastUpdated = Date.now();
@@ -122,6 +145,8 @@ export const readMethods = {
     this.pendingPR = { number };
     const token = ++this.detailToken;
     const key = this.spaceKey;
+    const cached = peekQuery(this.apiKey({ action: "detail", repo, number }));
+    if (cached) this.adoptPR(cached, repo);
     this.detailLoading = true;
     this.error = null;
     cx.spawn(async (cx) => {
@@ -148,7 +173,9 @@ export const readMethods = {
     });
   },
 
-  refresh(cx) {
+  refresh(cx, force = false) {
+    if (force) invalidateQueries((key) => key.startsWith('["pr-api"') || /provider|remotes|detect-repo/.test(key));
+    this.refreshed = Date.now();
     this.loadBranchPRs(cx);
     this.resolveRepo(cx);
     if (this.pr) this.openPR(this.pr.number, cx, this.pr.repository);

@@ -5,17 +5,38 @@ import { duration } from "../settings.js";
 import { searchQuery } from "./model.js";
 import { providerApi } from "./cli.js";
 
+import { cachedQuery, invalidateQueries, peekQuery, queryKey } from "../shared/query-cache.js";
+
 const SEARCH_DEBOUNCE_MS = 450;
 
 export const readMethods = {
+  apiKey(request, sp = this.sp) {
+    const provider = request.provider ?? this.provider;
+    const { provider: _provider, tools: _tools, ...payload } = request;
+    return queryKey(["issue-api", sp?.machine ?? null, provider?.kind, provider?.host,
+      this.settings.tools ?? null, { ...payload, repo: request.repo ?? provider?.repo ?? this.repo }]);
+  },
+
   async api(request, sp = this.sp) {
-    return providerApi(request, sp, request.provider ?? this.provider);
+    const provider = request.provider ?? this.provider;
+    request = { ...request, provider, repo: request.repo ?? provider?.repo ?? this.repo };
+    const read = ["list", "detail", "branch", "files", "jobs", "logs", "viewer"].includes(request.action);
+    const load = () => providerApi(request, sp, provider);
+    if (!read) {
+      const data = await load();
+      invalidateQueries((key) => key.startsWith('["issue-api"'));
+      this.cache = {};
+      return data;
+    }
+    const ttl = request.action === "detail" || request.action === "jobs" ? 30000 : 60000;
+    return cachedQuery(this.apiKey(request, sp), ttl, load);
   },
 
   // Viewer and repository metadata load once per panel.
-  async ensureViewer() {
+  async ensureViewer(sp = this.sp, provider = this.provider, key = this.spaceKey) {
     if (this.me) return;
-    const data = await this.api({ action: "viewer" });
+    const data = await this.api({ action: "viewer", provider }, sp);
+    if (key !== this.spaceKey) return;
     this.me = data.viewer;
     this.teams = data.teams ?? [];
   },
@@ -41,7 +62,7 @@ export const readMethods = {
   },
 
   listKey() {
-    return `${this.spaceKey}:${this.scope}:${this.state}:${this.team}:${this.serverSearch ?? ""}`;
+    return JSON.stringify([this.sp?.machine, this.provider?.kind, this.provider?.host, this.provider?.repo, this.scope, this.state, this.team, this.serverSearch ?? ""]);
   },
 
   // A refresh re-reads page one and keeps any further pages already loaded.
@@ -51,6 +72,8 @@ export const readMethods = {
     this.rememberView();
     const token = ++this.listToken;
     const key = this.spaceKey;
+    const sp = this.sp;
+    const provider = this.provider;
     const list = this.listKey();
     this.loading = true;
     this.error = null;
@@ -69,14 +92,16 @@ export const readMethods = {
     };
     cx.spawn(async (cx) => {
       try {
-        await this.ensureViewer();
-        const data = await this.api(request);
+        await this.ensureViewer(sp, provider, key);
+        if (token !== this.listToken || key !== this.spaceKey) return;
+        const data = await this.api(request, sp);
         if (token !== this.listToken || key !== this.spaceKey) return;
         const keep = refresh && this.items.length > data.items.length;
         const merged = new Map((more || keep ? this.items : []).map((i) => [i.id, i]));
         for (const item of data.items) merged.set(item.id, item);
         this.items = [...merged.values()];
         if (!keep) this.cursor = data.cursor ?? "";
+        if (Object.keys(this.cache).length > 64) delete this.cache[Object.keys(this.cache)[0]];
         this.cache[list] = { items: this.items, cursor: this.cursor };
         this.refreshed = Date.now();
         this.lastUpdated = Date.now();
@@ -104,12 +129,17 @@ export const readMethods = {
   openIssue(identifier, cx) {
     const token = ++this.detailToken;
     const key = this.spaceKey;
+    const sp = this.sp;
+    const provider = this.provider;
+    const cached = peekQuery(this.apiKey({ action: "detail", identifier }));
+    if (cached) this.adoptIssue(cached);
     this.detailLoading = true;
     this.error = null;
     cx.spawn(async (cx) => {
       try {
-        await this.ensureViewer();
-        const issue = await this.api({ action: "detail", identifier });
+        await this.ensureViewer(sp, provider, key);
+        if (token !== this.detailToken || key !== this.spaceKey) return;
+        const issue = await this.api({ action: "detail", identifier, provider }, sp);
         if (token !== this.detailToken || key !== this.spaceKey) return;
         this.adoptIssue(issue);
         this.refreshed = Date.now();
@@ -129,7 +159,13 @@ export const readMethods = {
     });
   },
 
-  refresh(cx) {
+  refresh(cx, force = false) {
+    if (force) {
+      invalidateQueries((key) => key.startsWith('["issue-api"') || /provider|remotes|detect-repo/.test(key));
+      this.me = null;
+      this.teams = [];
+    }
+    this.refreshed = Date.now();
     if (!this.provider) return this.resolveProvider(cx);
     this.loadBranchIssues(cx);
     // Only what's on screen, to spare API quota, plus once for the tab's count.

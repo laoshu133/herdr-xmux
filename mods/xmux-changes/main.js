@@ -9,6 +9,7 @@
 import { View } from "gpui-kit";
 import { TextareaState } from "gpui-base";
 import { props, shared, setShared, nextCommand, layout, run, notify, closeOverlay } from "herdr";
+import { configureQueries, panelShown } from "./shared/query-cache.js";
 import { loadSettings, duration } from "./settings.js";
 import { followFileIcons } from "./file-icons.js";
 import { panelCommands } from "./panel.js";
@@ -41,6 +42,7 @@ class XmuxChanges extends View {
       this.runPanelKey(p.overlay, cx);
       return;
     }
+    configureQueries(cx);
     this.mode = p.mode ?? "sidebar";
     this.diffSpace = p.space;
     this.source = p.source;
@@ -141,9 +143,12 @@ class XmuxChanges extends View {
         setShared("xmux-changes.diff-layout", this.diffLayout);
       }
       // A floor, so a bare number read as milliseconds cannot spin Git.
-      cx.timer.every(Math.max(1000, duration(settings.refresh.status, STATUS_POLL_MS)), (cx) =>
-        this.refresh(cx),
-      );
+      cx.timer.every(Math.max(1000, duration(settings.refresh.status, STATUS_POLL_MS)), (cx) => {
+        // Local file notifications cover normal edits; the slower poll catches
+        // missed notifications and external changes to repository metadata.
+        if (!this.on && this.watched && Date.now() - (this.refreshed ?? 0) < 60000) return;
+        this.refresh(cx);
+      });
       cx.notify();
     });
   }
@@ -161,7 +166,19 @@ class XmuxChanges extends View {
     }
   }
 
+  visible() {
+    if (this.mode === "sidebar") return panelShown(layout(), "xmux-changes");
+    const sp = this.diffSpace;
+    const tab = this.diffTab(sp);
+    return this.diffVisible(tab, sp);
+  }
+
   follow(cx) {
+    const shown = this.visible();
+    const returning = shown && !this.wasVisible;
+    this.wasVisible = shown;
+    if (!shown) return;
+    if (this.dirty || (returning && Date.now() - (this.refreshed ?? 0) > 2000)) this.refresh(cx);
     const style = shared("xmux-changes.diff-layout");
     if (style && style !== this.diffLayout) {
       this.diffLayout = style;
@@ -184,7 +201,7 @@ class XmuxChanges extends View {
       !this.busy
     ) {
       this.reload = reload.at;
-      this.refresh(cx);
+      this.refresh(cx, true);
     }
   }
 }

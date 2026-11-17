@@ -1,13 +1,13 @@
 // Reading a space's checkout from Git, with no view state.
 import { exec } from "herdr";
+import { spaceDirectory, rememberRoot } from "../shared/context.js";
 
 const basename = (path) => path.replace(/\/+$/, "").split("/").pop();
 
 // The first terminal defines a space's checkout, not whichever pane is focused.
 // Pass a panes() snapshot: each API call copies the full pane list.
 export function spaceFolder(space, paneList) {
-  const tabIDs = new Set((space.tabs ?? []).map((tab) => tab.id));
-  return paneList.find((pane) => tabIDs.has(pane.tab) && pane.cwd)?.cwd || space.folder;
+  return spaceDirectory(space, paneList);
 }
 
 export const checkoutKey = (space, paneList) =>
@@ -36,6 +36,7 @@ export async function readCheckout(cwd, on) {
   });
   if (top.code !== 0 || common.code !== 0) throw new Error("Cannot read repository metadata");
 
+  rememberRoot(cwd, top.stdout.trim(), on);
   const repo = common.stdout.trim();
   const info = {
     name: repo.endsWith("/.git")

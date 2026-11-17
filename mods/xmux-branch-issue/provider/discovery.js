@@ -2,6 +2,8 @@
 // branch. A token per kind of read lets an old answer finish without replacing
 // what's on screen after navigation.
 import { exec } from "herdr";
+import { cachedQuery } from "../shared/query-cache.js";
+import { rememberRoot } from "../shared/context.js";
 import { identifiersIn, searchQuery, resolveProvider } from "./model.js";
 
 // A branch name rarely carries more identifiers than this; each one costs a request.
@@ -17,6 +19,9 @@ export const discoveryMethods = {
     this.spaceKey = key;
     this.sp = sp;
     this.loadNewAgents(sp, cx);
+    this.providerToken = (this.providerToken ?? 0) + 1;
+    this.providerLoading = false;
+    this.me = null;
     this.listToken++;
     this.detailToken++;
     this.branchToken++;
@@ -55,11 +60,28 @@ export const discoveryMethods = {
   },
 
   async detectProvider(sp) {
-    const options = { cwd: sp.folder, on: sp.machine };
-    let lastError;
-    for (const name of ["upstream", "origin"]) {
-      const result = await exec("git", ["remote", "get-url", name], options);
-      if (result.code === 0) {
+    return cachedQuery(JSON.stringify(["issue-provider", sp.machine ?? null, sp.folder, this.settings.tools ?? null]), 300000, async () => {
+      const top = await exec("git", ["rev-parse", "--show-toplevel"], { cwd: sp.folder, on: sp.machine, timeout: 5000 });
+      if (top.code === 0) rememberRoot(sp.folder, top.stdout.trim(), sp.machine);
+      const options = { cwd: sp.folder, on: sp.machine, timeout: 5000, tools: this.settings.tools };
+      let lastError;
+      const tried = new Set();
+      for (const name of ["upstream", "origin"]) {
+        tried.add(name);
+        const result = await exec("git", ["remote", "get-url", name], options);
+        if (result.code === 0) {
+          try {
+            return await resolveProvider(result.stdout, options);
+          } catch (error) {
+            lastError = error;
+            // Try the next configured remote before reporting that none is usable.
+          }
+        }
+      }
+      const remotes = await exec("git", ["remote"], options);
+      for (const name of (remotes.stdout || "").split(/\r?\n/).filter(Boolean)) {
+        if (tried.has(name)) continue;
+        const result = await exec("git", ["remote", "get-url", name], options);
         try {
           return await resolveProvider(result.stdout, options);
         } catch (error) {
@@ -67,34 +89,31 @@ export const discoveryMethods = {
           // Try the next configured remote before reporting that none is usable.
         }
       }
-    }
-    const remotes = await exec("git", ["remote"], options);
-    for (const name of (remotes.stdout || "").split(/\r?\n/).filter(Boolean)) {
-      const result = await exec("git", ["remote", "get-url", name], options);
-      try {
-        return await resolveProvider(result.stdout, options);
-      } catch (error) {
-        lastError = error;
-        // Try the next configured remote before reporting that none is usable.
-      }
-    }
-    throw lastError ?? new Error("No GitHub or GitLab remote found for this directory.");
+      throw lastError ?? new Error("No GitHub or GitLab remote found for this directory.");
+    }, { share: true });
   },
 
   resolveProvider(cx) {
-    if (!this.sp?.folder) return;
-    const token = ++this.listToken;
+    if (!this.sp?.folder || this.providerLoading) return;
+    const token = ++this.providerToken;
     const sp = this.sp;
-    this.loading = true;
+    this.providerLoading = true;
     cx.spawn(async (cx) => {
       try {
-        this.provider = await this.detectProvider(sp);
-        if (token !== this.listToken) return;
+        const provider = await this.detectProvider(sp);
+        if (token !== this.providerToken) return;
+        this.provider = provider;
+        this.providerLoading = false;
         this.refresh(cx);
       } catch (e) {
-        if (token === this.listToken) { this.error = e.message; this.listLoaded = true; this.branchLoaded = true; }
+        if (token === this.providerToken) {
+          this.error = e.message;
+          this.listLoaded = true;
+          this.branchLoaded = true;
+          this.refreshed = Date.now();
+        }
       } finally {
-        if (token === this.listToken) { this.loading = false; cx.notify(); }
+        if (token === this.providerToken) { this.providerLoading = false; cx.notify(); }
       }
     });
   },
@@ -114,14 +133,14 @@ export const discoveryMethods = {
   // The branch's issues: an explicit `branch.<name>.herdr-issue` binding first, then
   // identifiers in the branch name. GitHub/GitLab confirms each; the rest are dropped.
   loadBranchIssues(cx) {
-    if (!this.sp?.folder || this.mutating) return;
+    if (!this.sp?.folder || this.mutating || this.branchLoading) return;
     const token = ++this.branchToken;
     const sp = this.sp;
     const key = this.spaceKey;
     this.branchLoading = true;
     cx.spawn(async (cx) => {
       try {
-        const options = { cwd: sp.folder, on: sp.machine };
+        const options = { cwd: sp.folder, on: sp.machine, timeout: 5000, tools: this.settings.tools };
         const result = await exec("git", ["symbolic-ref", "--quiet", "--short", "HEAD"], options);
         if (token !== this.branchToken || key !== this.spaceKey) return;
         this.branch = result.code === 0 ? result.stdout.trim() : "";
@@ -134,6 +153,8 @@ export const discoveryMethods = {
           ["config", "--get", `branch.${this.branch}.herdr-issue`],
           options,
         );
+        if (token !== this.branchToken || key !== this.spaceKey) return;
+        const provider = this.provider;
         const bound = identifiersIn(binding.stdout ?? "");
         const named = identifiersIn(this.branch);
         const limit = Math.max(
@@ -141,10 +162,9 @@ export const discoveryMethods = {
           this.settings.branch.max_identifiers || MAX_BRANCH_CANDIDATES,
         );
         const candidates = [...new Set([...bound, ...named])].slice(0, limit);
-        const found = [];
-        for (const identifier of candidates) {
-          try { found.push(await this.api({ action: "detail", identifier, repo: this.provider.repo, provider: this.provider }, sp)); } catch {}
-        }
+        const results = await Promise.allSettled(candidates.map((identifier) =>
+          this.api({ action: "detail", identifier, repo: provider.repo, provider }, sp)));
+        const found = results.filter((r) => r.status === "fulfilled").map((r) => r.value);
         if (token !== this.branchToken || key !== this.spaceKey) return;
         this.branchIssues = found;
         // Only a binding can be undone; an identifier in the branch name would come back.
@@ -176,7 +196,7 @@ export const discoveryMethods = {
     cx.spawn(async (cx) => {
       try {
         await this.api({ action: "detail", identifier }, sp);
-        const options = { cwd: sp.folder, on: sp.machine };
+        const options = { cwd: sp.folder, on: sp.machine, timeout: 5000, tools: this.settings.tools };
         const current = await exec("git", ["config", "--get", key], options);
         const list = [...new Set([...identifiersIn(current.stdout ?? ""), identifier])].join(",");
         const written = await exec("git", ["config", key, list], options);
@@ -204,7 +224,7 @@ export const discoveryMethods = {
     cx.notify();
     cx.spawn(async (cx) => {
       try {
-        const options = { cwd: sp.folder, on: sp.machine };
+        const options = { cwd: sp.folder, on: sp.machine, timeout: 5000, tools: this.settings.tools };
         const current = await exec("git", ["config", "--get", key], options);
         const rest = identifiersIn(current.stdout ?? "").filter((id) => id !== identifier);
         const written = await exec(

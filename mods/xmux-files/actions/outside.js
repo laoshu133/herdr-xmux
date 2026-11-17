@@ -89,13 +89,18 @@ export const outsideMethods = {
   // Reuse the Files panel's space folder as the workspace, then reveal the file in that window.
   // This is shared by the tree and viewer, locally and over the machine's configured SSH target.
   async openInVsCode(file) {
-    const folder = file.root || file.path.slice(0, -file.path.split("/").pop().length - 1) || "/";
-    const target = file.on ? await this.remoteVsCodeTarget(file.on) : null;
-    const args = target ? ["--remote", `ssh-remote+${target}`] : ["--reuse-window"];
-    const app = shared(APPS)?.[VSCODE] ?? "/Applications/Visual Studio Code.app";
-    const cli = `${app}/Contents/Resources/app/bin/code`;
-    const result = await exec(cli, [...args, folder, file.path], {}).catch((error) => ({ code: 1, stderr: error.message }));
-    setShared(ERROR, result.code === 0 ? null : `Could not open ${file.path} in VS Code: ${result.stderr?.trim() || "it failed"}`);
+    try {
+      const folder = file.root || file.path.slice(0, -file.path.split("/").pop().length - 1) || "/";
+      const target = file.on ? await this.remoteVsCodeTarget(file.on) : null;
+      const args = target ? ["--remote", `ssh-remote+${target}`] : ["--reuse-window"];
+      const app = shared(APPS)?.[VSCODE] ?? "/Applications/Visual Studio Code.app";
+      const cli = `${app}/Contents/Resources/app/bin/code`;
+      const paths = folder === file.path ? [folder] : [folder, file.path];
+      const result = await exec(cli, [...args, ...paths], {});
+      setShared(ERROR, result.code === 0 ? null : `Could not open ${file.path} in VS Code: ${result.stderr?.trim() || "it failed"}`);
+    } catch (error) {
+      setShared(ERROR, `Could not open ${file.path} in VS Code: ${error.message}`);
+    }
   },
 
   async remoteVsCodeTarget(on) {

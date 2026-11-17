@@ -1,6 +1,8 @@
 // The mod's Git state: following the repository, changing the index, history,
 // commit and amend. The reads themselves are in git-reads.js.
-import { spaces, panes, focused, exec, watchFolder, shared, setShared } from "herdr";
+import { exec, watchFolder, shared, setShared } from "herdr";
+import { activeWorkspace, rememberRoot } from "../shared/context.js";
+import { cachedQuery, invalidateQueries } from "../shared/query-cache.js";
 import {
   readStatus,
   readBranchAndRepo,
@@ -24,21 +26,8 @@ const BULK_PATHS = 200; // Per command, to stay under the system's argument limi
 // The active terminal's folder, or the repository saved for our own diff tab,
 // since a mod pane has no terminal folder.
 function activeLocation() {
-  const space = spaces().find((s) => s.active);
-  const tab = space?.tabs?.find((t) => t.active)?.id;
-  const candidates = panes().filter((p) => p.tab === tab && p.cwd);
-  if (!candidates.length && panes().some((p) => p.tab === tab && p.mod === "xmux-changes")) {
-    const source = (shared("xmux-changes.diff-tabs") ?? {})[space?.id]?.source;
-    if (source) return source;
-  }
-  return {
-    cwd:
-      candidates.find((p) => p.focused)?.cwd ??
-      candidates[0]?.cwd ??
-      focused()?.cwd ??
-      space?.folder,
-    on: space?.machine ?? null,
-  };
+  const sp = activeWorkspace();
+  return { cwd: sp?.folder, on: sp?.machine ?? null };
 }
 
 export const gitMethods = {
@@ -60,7 +49,10 @@ export const gitMethods = {
   },
 
   git(args, root = this.root, on = this.on) {
-    return exec("git", [...READ_ONLY, ...args], { cwd: root, on });
+    const command = args.find((a) => !a.startsWith("-"));
+    const read = ["status", "diff", "show", "log", "rev-parse", "merge-base", "rev-list", "symbolic-ref", "remote", "ls-files"].includes(command);
+    // Commit hooks may legitimately outlive a read's deadline.
+    return exec("git", [...READ_ONLY, ...args], { cwd: root, on, ...(read ? { timeout: 10000 } : {}) });
   },
 
   // A slow read may finish after the person moved to another repository.
@@ -68,11 +60,26 @@ export const gitMethods = {
     return context === this.contextKey();
   },
 
-  refresh(cx) {
+  invalidateRepository() {
+    const on = this.on ?? this.location().on ?? null;
+    const roots = [this.root, this.location().cwd];
+    invalidateQueries((key) => {
+      try { const k = JSON.parse(key); return k[0]?.startsWith("changes-") && k[1] === on && roots.includes(k[2]); }
+      catch { return false; }
+    });
+  },
+
+  refresh(cx, force = false) {
+    if (force) this.invalidateRepository();
+    if (!this.visible()) { this.dirty = true; return; }
     if (this.loading || this.busy) return;
     const { cwd, on } = this.location();
     const context = this.contextKey();
     if (context !== this.context) this.startNewContext(context);
+    if (!force && !this.dirty && this.retryAt > Date.now()) return;
+    // Selection changes still load from follow(); immutable tabs need no poll.
+    if (!force && this.mode === "diff" && ["commit", "patch"].includes(this.scope) && this.root) { this.dirty = false; return; }
+    this.dirty = false;
     if (!cwd) return;
 
     this.loading = true;
@@ -80,8 +87,15 @@ export const gitMethods = {
     cx.spawn(async (cx) => {
       try {
         await this.readRepository(cwd, on, context, cx);
+        this.failures = 0;
+        this.retryAt = 0;
+        this.refreshed = Date.now();
       } catch (error) {
-        if (this.isCurrent(context)) this.error = error.message;
+        if (this.isCurrent(context)) {
+          this.error = error.message;
+          this.failures = (this.failures ?? 0) + 1;
+          this.retryAt = Date.now() + Math.min(60000, 5000 * 2 ** Math.min(this.failures - 1, 4));
+        }
       } finally {
         this.loading = false;
         cx.notify();
@@ -92,6 +106,8 @@ export const gitMethods = {
   // Forget everything about the last repository, including diffs still loading.
   startNewContext(context) {
     this.context = context;
+    this.retryAt = 0;
+    this.failures = 0;
     this.root = null;
     this.files = [];
     this.committed = null;
@@ -116,21 +132,29 @@ export const gitMethods = {
   },
 
   async readRepository(cwd, on, context, cx) {
-    const top = await this.git(["rev-parse", "--show-toplevel"], cwd, on);
+    const top = await cachedQuery(JSON.stringify(["changes-root", on ?? null, cwd]), 300000,
+      async () => {
+        const result = await this.git(["rev-parse", "--show-toplevel"], cwd, on);
+        if (result.code !== 0) throw new Error("Not a Git repository");
+        return result;
+      }, { share: true });
     if (!this.isCurrent(context)) return;
-    if (top.code !== 0) {
-      this.root = null;
-      this.files = [];
-      this.error = "Not a Git repository";
-      return;
-    }
 
     const root = top.stdout.trim();
     const git = (args) => this.git(args, root, on);
-    const status = await readStatus(git);
+    if (this.mode === "diff" && ["commit", "patch"].includes(this.scope)) {
+      this.root = root;
+      this.on = on;
+      this.syncSelection(cx);
+      if (this.path && !this.diffLoading && !this.rows.length) this.loadDiff(cx);
+      return;
+    }
+    const status = await cachedQuery(JSON.stringify(["changes-status", on ?? null, root]), 1000,
+      () => readStatus(git), { share: true });
     if (!this.isCurrent(context)) return;
     this.storeStatus(root, on, status);
     this.watch(root, cx);
+    if (this.mode === "sidebar") rememberRoot(cwd, root, on);
 
     if (this.mode === "sidebar") {
       await this.readSidebarState(git, context, cx);
@@ -154,8 +178,10 @@ export const gitMethods = {
   },
 
   async readSidebarState(git, context, cx) {
-    const committed = await readCommitted(git, this.committed, this.settings.limits.files);
-    const { branch, repo } = await readBranchAndRepo(git);
+    const { committed, branch, repo } = await cachedQuery(
+      JSON.stringify(["changes-summary", this.on ?? null, this.root, this.settings.limits.files]), 10000,
+      async () => ({ committed: await readCommitted(git, this.committed, this.settings.limits.files),
+        ...await readBranchAndRepo(git) }));
     if (!this.isCurrent(context)) return;
     this.committed = committed;
     this.branch = branch;
@@ -171,7 +197,15 @@ export const gitMethods = {
       try {
         while (this.watched === root) {
           await watchFolder(root);
-          if (this.watched === root) this.refresh(cx);
+          if (this.watched !== root) break;
+          const revision = this.watchRevision = (this.watchRevision ?? 0) + 1;
+          cx.timer.after(300, (cx) => {
+            if (this.watched !== root || revision !== this.watchRevision) return;
+            // Hidden/busy panels remember the event and refresh on return.
+            this.dirty = true;
+            invalidateQueries((key) => key === JSON.stringify(["changes-status", null, root]));
+            if (this.visible()) this.refresh(cx);
+          });
         }
       } catch {
         if (this.watched === root) this.watched = null;
@@ -235,7 +269,7 @@ export const gitMethods = {
         this.note = `${action === "stage" ? "Stage" : "Unstage"} failed: ${error.message}`;
       } finally {
         this.busy = false;
-        this.refresh(cx);
+        this.refresh(cx, true);
         cx.notify();
       }
     });
@@ -417,7 +451,7 @@ export const gitMethods = {
       } finally {
         this.busy = false;
         this.operation = null;
-        this.refresh(cx);
+        this.refresh(cx, true);
         cx.notify();
       }
     });
@@ -425,6 +459,7 @@ export const gitMethods = {
 
   openCommit(commit, cx) {
     const context = this.context;
+    const root = this.root, on = this.on;
     const token = ++this.commitToken;
     this.selectedCommit = commit;
     this.commitFiles = [];
@@ -433,7 +468,8 @@ export const gitMethods = {
     cx.notify();
     cx.spawn(async (cx) => {
       try {
-        const files = await readCommitFiles((args) => this.git(args), commit.hash);
+        const files = await cachedQuery(JSON.stringify(["changes-commit-files", on ?? null, root, commit.hash]),
+          1800000, () => readCommitFiles((args) => this.git(args, root, on), commit.hash));
         if (token !== this.commitToken || !this.isCurrent(context)) return;
         this.commitFiles = files;
       } catch (error) {

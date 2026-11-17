@@ -1,7 +1,7 @@
 // The right-click menu: its own small copy of this mod, in a popup at the pointer.
 import { div } from "gpui-kit";
 import { v_flex } from "gpui-base";
-import { closeOverlay, props, shared, theme } from "herdr";
+import { closeOverlay, props, shared, setShared, theme } from "herdr";
 import { foundEditors } from "../actions/outside.js";
 import { agentName } from "../actions/agents.js";
 import { TEXT } from "./ui.js";
@@ -9,14 +9,13 @@ import { TEXT } from "./ui.js";
 export const contextMenuMethods = {
   menuItems(target) {
     const local = !target.on;
-    const editors = local ? foundEditors() : [];
-    const remoteVsCode = !local && foundEditors().some((e) => e.bundle === "com.microsoft.VSCode");
-    const file = { path: target.path, root: target.root, on: target.on };
+    const editors = local ? foundEditors().filter((e) => e.bundle !== "com.microsoft.VSCode") : [];
+    const file = { path: target.path, root: target.dir ? target.path : target.root, on: target.on, space: target.space };
     const groups = [];
     if (!target.dir)
       groups.push([
         { id: "open", label: "Open", run: (cx) => this.openFile(file, cx) },
-        { id: "open-tab", label: "Open in new tab", run: (cx) => this.openInNewTab(file, cx) },
+        { id: "vscode", label: "Open in VS Code", run: () => this.openInVsCode(file) },
       ]);
     groups.push([
       ...editors.map((e) => ({
@@ -24,8 +23,8 @@ export const contextMenuMethods = {
         label: `Open in ${e.name}`,
         run: () => this.openInEditor(e, target.path),
       })),
-      ...(remoteVsCode
-        ? [{ id: "remote-vscode", label: "Open in VS Code", run: () => this.openRemoteVsCode(target.path, target.on) }]
+      ...(target.dir
+        ? [{ id: "vscode", label: "Open in VS Code", run: () => this.openInVsCode(file) }]
         : []),
       ...(local && !target.dir
         ? [{ id: "default", label: "Open in default app", run: () => this.openWithDefault(target.path) }]
@@ -105,9 +104,15 @@ export const contextMenuMethods = {
             .rounded(5)
             .cursor_pointer()
             .hover((s) => s.bg(t.hover))
-            .on_click((_e, cx) => {
-              item.run(cx);
-              closeOverlay(props()?.overlay);
+            .on_click(async (_e, cx) => {
+              if (this.menuBusy) return;
+              this.menuBusy = true;
+              const overlay = props()?.overlay;
+              // Closing a mod cancels its host calls. Keep this copy alive
+              // through the SSH lookup and the subsequent editor launch.
+              try { await item.run(cx); }
+              catch (error) { setShared("xmux-files.error", String(error.message ?? error)); }
+              finally { closeOverlay(overlay); }
             })
             .child(div().truncate().child(item.label)),
         );

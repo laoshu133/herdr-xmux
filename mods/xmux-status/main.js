@@ -1,6 +1,7 @@
 import { View, div, svg } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { spaces, agents, focused, theme, run, window, keys, nextCommand } from "herdr";
+import { openTerminalTab, splitTerminal } from "./shared/context.js";
 import { ReopenTab } from "./reopen.js";
 import { QuickDialog } from "./quick-dialog.js";
 
@@ -13,7 +14,10 @@ export default class WorkspaceStatus extends View {
     cx.spawn(async (cx) => {
       for (;;) {
         const command = await nextCommand();
-        if (command === "cross-tab-next") this.crossTab(1);
+        if (command === "new-terminal") openTerminalTab();
+        else if (command.startsWith("split-right")) splitTerminal("right", command.split(":")[1]);
+        else if (command.startsWith("split-down")) splitTerminal("down", command.split(":")[1]);
+        else if (command === "cross-tab-next") this.crossTab(1);
         else if (command === "cross-tab-prev") this.crossTab(-1);
         else if (command === "reopen-closed") this.reopenTab.reopen();
         else if (command === "quick-dialog") cx.spawn(async () => this.quickDialog.toggle());

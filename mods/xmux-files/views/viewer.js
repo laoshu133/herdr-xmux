@@ -1,7 +1,7 @@
 // A file in the centre pane, read-only, following the file as it changes on disk. Editing
 // belongs in the code editor it can open.
 import { div, image } from "gpui-kit";
-import { h_flex, v_flex, Editor, EditorState, Scrollbar, v_virtual_list } from "gpui-base";
+import { h_flex, v_flex } from "gpui-base";
 import { exec, focused, layout, panes, readTextFile, setShared, shared, theme } from "herdr";
 import {
   baseName,
@@ -16,18 +16,15 @@ import {
   parentOf,
   parseHunks,
   resolvePath,
-  tokenize,
   viewable,
 } from "../files/model.js";
+import { newCode, CodeEditor, CodeRows } from "../shared/code-viewer.js";
+import { fileMenuTarget, showFileMenu } from "../shared/file-menu.js";
 import { viewerEntries } from "../actions/open.js";
 import { foundEditors } from "../actions/outside.js";
 import { fileIcon, isLight } from "../files/file-icons.js";
 import { TEXT, FileIcon, Markdown, Message, MenuButton, TextButton, codeFont, codeSize } from "./ui.js";
 
-const CHAR_WIDTH = 0.62; // Of the code font's size, to size the sideways scroll.
-const LINE_COLUMNS = 6; // The number column and a margin, in the same units.
-const rowHeight = () => Math.round(codeSize() * 1.6);
-const REMOVED_ROW = 8;
 
 const IMAGE_PAD = 16;
 const MIN_ZOOM = 0.1, MAX_ZOOM = 8;
@@ -66,6 +63,7 @@ export const viewerMethods = {
 
   syncViewer(cx) {
     this.claimTab();
+    if (!this.viewerVisible()) return;
     const file = this.viewerEntry()?.file ?? this.viewerFile;
     if (!file) return;
     if (file.path !== this.file?.path) {
@@ -95,7 +93,7 @@ export const viewerMethods = {
     this.diffing = true;
     cx.spawn(async (cx) => {
       const git = (args) =>
-        exec("git", ["--no-optional-locks", ...args], { cwd: file.root, on: file.on }).catch(() => null);
+        exec("git", ["--no-optional-locks", ...args], { cwd: file.root, on: file.on, timeout: 5000 }).catch(() => null);
       let marks = [];
       const status = await git(["status", "--porcelain=v1", "--", file.path]);
       if (status?.code === 0 && status.stdout.startsWith("??")) {
@@ -116,7 +114,7 @@ export const viewerMethods = {
 
   // Only a real change touches the view, so the place you're reading stays put.
   readFile(cx) {
-    const file = this.viewerFile ?? this.file;
+    const file = this.file ?? this.viewerFile;
     if (file && isImage(file.path) && !(isSvg(file.path) && this.markdownView() === "code"))
       return this.readImage(cx);
     if (!file || this.reading) return;
@@ -148,34 +146,21 @@ export const viewerMethods = {
   },
 
   newCode(file, value) {
-    const t = theme();
-    return EditorState.new({
-      language: languageOf(file.path),
-      readonly: true,
-      value,
-      soft_wrap: this.wrap,
-      font_family: codeFont(),
-      font_size: codeSize(),
-      syntax: {
-        keyword: t.ansi5,
-        string: t.ansi2,
-        comment: t.dim,
-        function: t.ansi4,
-        type: t.ansi3,
-        number: t.ansi1,
-        constant: t.ansi6,
-      },
-    });
+    return newCode({ value, language: languageOf(file.path), wrap: this.wrap,
+      font: codeFont(), size: codeSize() });
   },
 
-  // Retained editor state belongs to reads and events, never to render(). Turning wrap off can
-  // release its state because the selectable source view is replaced by the diff row view.
   syncCodeState(file, value) {
-    if (this.gutterOn && !this.wrap && this.changesOn && this.hunks?.length) {
-      this.code?.release();
+    // Keep the Editor available for wrap and very large decorated files.
+    const config = JSON.stringify([this.wrap, languageOf(file.path), codeFont(), codeSize()]);
+    if (this.code && this.codeConfig !== config) {
+      this.code.release();
       this.code = null;
-    } else if (this.code) this.code.set_value(value);
-    else this.code = this.newCode(file, value);
+    }
+    if (!this.code) this.code = this.newCode(file, value);
+    else if (this.codeText !== value) this.code.set_value(value);
+    this.codeConfig = config;
+    this.codeText = value;
   },
 
   // What the pane's header row says, the same row a diff uses: file, folder, and whether
@@ -212,49 +197,23 @@ export const viewerMethods = {
     return find(layout()) === "xmux-changes";
   },
 
-  // The file as rows, the way XMux Changes draws a diff. Herdr's editor can't mark a line,
-  // and marks laid over it slid as it scrolled, but here a line's colour is part of its row.
   linesView() {
-    const lines = this.fileLines();
-    const language = languageOf(this.file.path);
-    const rows = buildRows(lines, this.hunks ?? [], this.openHunks);
-    const height = rowHeight();
-    const sized = rows.some((row) => row.type === "removed")
-      ? rows.map((row) => (row.type === "removed" ? REMOVED_ROW : height))
-      : height;
-    const listId = `viewer-lines-${this.viewerId}-${this.file.path}`;
-    const list = v_virtual_list(
-      listId,
-      rows.length,
-      sized,
-      (i) => rows[i].key,
-      (range) => rows.slice(range.start, range.end).map((row) => this.fileRow(row, language)),
-    )
-      // A handler per list, not per row: Herdr's virtual lists allow no handlers in a row.
-      .on_item_click((key, cx) => this.toggleChange(rows.find((row) => row.key === key), cx))
-      .size_full();
-    const widest = lines.reduce((most, line) => Math.max(most, line.length), 0);
-    return div()
-      .id("viewer-lines")
-      .flex_1()
-      .min_h(0)
-      .min_w(0)
-      .relative()
-      .font_family(codeFont())
-      .text_size(codeSize())
-      .child(
-        div()
-          .id("viewer-x")
-          .size_full()
-          .overflow_x_scrollbar().mode("scrolling")
-          .child(
-            div()
-              .min_w(Math.max(300, (widest * CHAR_WIDTH + LINE_COLUMNS) * codeSize()))
-              .h_full()
-              .child(list),
-          ),
-      )
-      .child(Scrollbar.vertical(listId).mode("scrolling").viewport_from_layout().absolute().inset_0());
+    const rows = buildRows(this.fileLines(), this.hunks ?? [], this.openHunks);
+    // Native Editor keeps a large file fully selectable without mounting
+    // thousands of gutters. The ordinary source view remains complete.
+    if (rows.length > 2000) return v_flex().flex_1().min_h(0)
+      .child(Message("Changes marks are hidden for this large file."))
+      .child(CodeEditor(this.code));
+    const shown = rows.map((row) => ({ ...row,
+      kind: row.type === "old" || row.type === "removed" ? "-"
+        : row.hunk ? (row.hunk.kind === "added" ? "+" : "yours") : " ",
+      text: row.type === "removed" ? "" : row.text }));
+    return CodeRows({ id: `source-${this.viewerId}-${this.file.path}`,
+      columns: [shown], font: codeFont(), size: codeSize(),
+      gutter: (row) => div().w(codeSize() * 4.5).h_full().text_right().pr(8)
+        .when(Boolean(row.hunk?.old.length), (el) => el.cursor_pointer()
+          .on_mouse_down((_e, cx) => this.toggleChange(row, cx)))
+        .child(row.type === "removed" ? "−" : String(row.number ?? "")) });
   },
 
   // Only a change that replaced something has anything to open.
@@ -274,70 +233,9 @@ export const viewerMethods = {
     return this.lines;
   },
 
-  fileRow(row, language) {
-    const t = theme();
-    if (row.type === "removed")
-      return h_flex()
-        .id(`viewer-${row.key}`)
-        .h(REMOVED_ROW)
-        .w_full()
-        .items_center()
-        .cursor_pointer()
-        .child(div().h(2).w_full().bg(t.ansi1));
-    const old = row.type === "old";
-    const open = row.hunk && this.openHunks.has(hunkKey(row.hunk));
-    // A line whose old version is showing reads as what replaced it.
-    const color = old
-      ? t.ansi1
-      : row.hunk
-        ? { added: t.ansi2, changed: open ? t.ansi2 : t.ansi3 }[row.hunk.kind]
-        : null;
-    const SYNTAX = { keyword: t.ansi5, string: t.ansi2, comment: t.dim, number: t.ansi1 };
-    const runs = old ? [{ text: row.text, kind: "old" }] : tokenize(row.text, language);
-    return h_flex()
-      .id(`viewer-${row.key}`)
-      .h(rowHeight())
-      .w_full()
-      .items_center()
-      .when(Boolean(color), (el) => el.bg(`${color?.slice(0, 7)}26`))
-      .when(Boolean(row.hunk?.old.length), (el) => el.cursor_pointer())
-      .child(
-        div()
-          .id(color && !old ? `viewer-mark-${row.number - 1}` : `viewer-bar-${row.key}`)
-          .w(3)
-          .h_full()
-          .flex_none()
-          .when(Boolean(color), (el) => el.bg(color)),
-      )
-      .child(
-        div()
-          .w(codeSize() * 3.5)
-          .pr(codeSize())
-          .flex_none()
-          .text_right()
-          .text_color(t.dim)
-          .child(String(row.number)),
-      )
-      .child(
-        h_flex()
-          .flex_1()
-          .min_w(0)
-          .whitespace_nowrap()
-          .children(
-            runs.map((run) =>
-              div()
-                .flex_none()
-                .whitespace_nowrap()
-                .text_color(run.kind === "old" ? t.ansi1 : (SYNTAX[run.kind] ?? t.foreground))
-                .child(run.text || " "),
-            ),
-          ),
-      );
-  },
-
   // Local and remote images share a bounded cache in Herdr's data directory.
   readImage(cx) {
-    const file = this.viewerFile ?? this.file;
+    const file = this.file ?? this.viewerFile;
     if (isSvg(file.path) && this.markdownView() === "code") {
       this.imageShown = null;
       this.problem = null;
@@ -696,6 +594,11 @@ export const viewerMethods = {
     const inHeader = this.headerShowsTitle();
     const root = v_flex()
       .id("xmux-files-viewer")
+      .on_mouse_down("right", (_e, cx) => {
+        if (!this.file) return;
+        cx.stop_propagation();
+        showFileMenu(fileMenuTarget(this.file, { space: this.viewerEntry()?.space ?? this.viewerSpace }));
+      })
       .relative()
       .size_full()
       .min_w(0)
@@ -730,7 +633,7 @@ export const viewerMethods = {
     else if (this.showsPreview()) root.child(this.previewView());
     else if (this.gutterOn && !this.wrap && this.changesOn && this.hunks?.length) root.child(this.linesView());
     else if (!this.code) root.child(Message(head ? "Loading…" : "This tab has no file."));
-    else root.child(v_flex().flex_1().min_h(0).child(Editor.new(this.code).flex_1().min_h(0)));
+    else root.child(CodeEditor(this.code));
     // There's no row of its own to sit in, so the actions float over the file's corner.
     // On the file's own colour, nearly opaque, so the text under it fades out without a box.
     if (inHeader)

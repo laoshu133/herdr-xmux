@@ -3,7 +3,7 @@
 import { exec } from "herdr";
 
 const project = (provider, repo) => `${provider?.host || "gitlab.com"}/${repo}`;
-const options = (sp) => ({ cwd: sp?.machine ? undefined : sp?.folder, on: sp?.machine });
+const options = (sp) => ({ cwd: sp?.machine ? undefined : sp?.folder, on: null, timeout: 15000 });
 
 function cliError(result) {
   const text = `${result.stderr || ""}\n${result.stdout || ""}`.trim();

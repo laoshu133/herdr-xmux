@@ -3,6 +3,7 @@ import { div } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar } from "gpui-base";
 import { theme, shared, setShared } from "herdr";
 import { fileTree, timeAgo } from "../git/model.js";
+import { fileMenuTarget, showFileMenu } from "../shared/file-menu.js";
 import {
   TEXT,
   SPIN_MS,
@@ -133,7 +134,7 @@ export const sidebarMethods = {
   },
 
   refreshAll(cx) {
-    this.refresh(cx);
+    this.refresh(cx, true);
     if (this.tab === "commit") this.loadCommits(cx);
     if (this.refreshSpinning) return;
     this.refreshSpinning = true;
@@ -408,6 +409,11 @@ export const sidebarMethods = {
       depth,
       selected: open?.path === file.path && open?.scope === scope,
       onClick: (cx) => this.pick(file, scope, cx),
+    }).on_mouse_down("right", (_e, cx) => {
+      cx.stop_propagation();
+      showFileMenu(fileMenuTarget({ path: `${this.root}/${file.path}`, root: this.root, on: this.on }, {
+        space: this.diffSpace, changed: ["staged", "unstaged", "conflict"].includes(scope), staged: scope === "staged",
+      }));
     }).child(FileIcon({ icons: this.fileIcons, path: `${this.root}/${file.path}`, color: t.muted, t }));
     if (tree) row.child(div().flex_1().min_w(0).truncate().child(name));
     else

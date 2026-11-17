@@ -5,17 +5,7 @@ import { theme, spaces, panes, knownAgents, run, openOverlay, closeOverlay, prop
 // The last agents each machine reported, shown at once while knownAgents() checks again.
 const KNOWN = "new-menu.agents";
 
-// `tab.new` does not expose the created id. Remember the current tab set so
-// xmux-tabs can move the first new tab to the same append position as `+`.
-function newTabAtEnd(space, options = {}) {
-  const tabs = space?.tabs ?? [];
-  run("tab.new", { ...options, space: space?.id });
-  setShared("xmux.pending-append", {
-    space: space?.id,
-    existing: tabs.map((tab) => tab.id),
-    index: tabs.length + 1,
-  });
-}
+import { openTerminalTab } from "./shared/context.js";
 
 function shortcut(name) {
   const k = keys().find(b => b.section === "global" && b.action === name);
@@ -70,8 +60,8 @@ export default class NewMenu extends View {
     const installed = this.agents.filter(a => a.installed);
     const choices = this.failed ? installed : [...installed, ...this.agents.filter(a => !a.installed).slice(0, 2)];
     const items = [
-      { key: "terminal", enabled: true, action: () => newTabAtEnd(space) },
-      ...installed.map(agent => ({ key: agent.key, enabled: true, action: () => newTabAtEnd(space, { name: agent.name, argv: agent.run }) })),
+      { key: "terminal", enabled: true, action: () => openTerminalTab(space) },
+      ...installed.map(agent => ({ key: agent.key, enabled: true, action: () => openTerminalTab(space, { argv: agent.run }) })),
       { key: "space", enabled: true, action: () => run("space.new") },
       { key: "worktree", enabled: Boolean(space), action: () => openOverlay({ mod: "worktree", kind: "dialog", width: 460, height: 280, props: { space: space?.id, folder: panes().find(p => p.focused)?.cwd, action: "new" } }) },
       { key: "worktree-open", enabled: Boolean(space), action: () => openOverlay({ mod: "worktree", kind: "dialog", width: 560, height: 480, props: { space: space?.id, folder: panes().find(p => p.focused)?.cwd, action: "open" } }) },

@@ -10,6 +10,19 @@ const PRUNE_AFTER_MS = 15000;
 
 export const viewerEntries = () => shared(VIEWERS) ?? {};
 
+// Core syncs mod props verbatim between clients. A space seen as `m5/id` on
+// another computer is just `id` here; paths belong to that space's machine.
+export function restoreViewerSource(entry, list = spaces()) {
+  const bare = (id) => id?.split("/").pop();
+  const exact = list.find((s) => s.id === entry.space);
+  const matches = list.filter((s) => bare(s.id) === bare(entry.space));
+  const owner = exact ?? (matches.length === 1 ? matches[0] : null);
+  if (!owner || !entry.file) return entry;
+  const tab = owner.tabs?.find((t) => bare(t.id) === bare(entry.tab));
+  return { ...entry, space: owner.id, tab: tab?.id ?? entry.tab,
+    file: { ...entry.file, on: owner.machine ?? null } };
+}
+
 export const openMethods = {
   setViewer(id, change) {
     const entries = viewerEntries();
@@ -58,21 +71,10 @@ export const openMethods = {
 
   // A click: select the file's existing tab, otherwise open a new one.
   openFile(file, cx) {
-    const space = spaces().find((s) => s.active)?.id;
+    const space = file.space ?? spaces().find((s) => s.active)?.id;
     if (!space) return;
     const viewers = this.liveViewers(space);
-    const open = viewers.find(([, entry]) => entry.file?.path === file.path);
-    if (open) {
-      if (open[1].tab) run("tab.select", { id: open[1].tab });
-    } else this.newViewer(file, space);
-    cx?.notify();
-  },
-
-  // From the menu: always a tab of its own.
-  openInNewTab(file, cx) {
-    const space = spaces().find((s) => s.active)?.id;
-    if (!space) return;
-    const open = this.liveViewers(space).find(([, entry]) => entry.file?.path === file.path);
+    const open = viewers.find(([, entry]) => entry.file?.path === file.path && (entry.file?.on ?? null) === (file.on ?? null));
     if (open) {
       if (open[1].tab) run("tab.select", { id: open[1].tab });
     } else this.newViewer(file, space);
@@ -82,7 +84,7 @@ export const openMethods = {
   // Hands a changed file to XMux Changes, the way its own list does. `top` is the Git
   // root, which is what it knows a file by.
   showDiff(target, cx) {
-    const space = spaces().find((s) => s.active);
+    const space = target.space ? spaces().find((s) => s.id === target.space) : spaces().find((s) => s.active);
     if (!space || !target.top) return;
     const source = { cwd: target.top, on: target.on ?? null };
     const selection = {

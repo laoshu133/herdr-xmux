@@ -1,9 +1,12 @@
 // The diff: opening a file in the centre tab, reading it, and drawing it.
 import { div } from "gpui-kit";
-import { h_flex, Scrollbar, v_virtual_list } from "gpui-base";
+import { h_flex } from "gpui-base";
 import { spaces, panes, readTextFile, theme, shared, setShared, run, layout } from "herdr";
 import { diffRows, splitDiffRows, conflictRows } from "../git/model.js";
 import { TEXT, SIZE, codeFont, codeSize, FileIcon, Panel, PaneBar, DiffStat, Message, TextButton } from "./ui.js";
+import { cachedQuery } from "../shared/query-cache.js";
+import { CodeRows } from "../shared/code-viewer.js";
+import { fileMenuTarget, showFileMenu } from "../shared/file-menu.js";
 import { fileIcon, isLight } from "../file-icons.js";
 
 const TAB_OPEN_TIMEOUT_MS = 1500;
@@ -11,7 +14,6 @@ const NO_PATCH = "No text diff: GitHub leaves out binary and very large files.";
 // In widths of the code font's size, so a diff looks the same at any terminal size.
 const CHAR_WIDTH = 0.62;
 const GUTTERS = 10;
-const rowHeight = () => Math.round(codeSize() * 1.5);
 const scrollWidth = (lengths) =>
   Math.max(300, ...lengths.map((length) => (length * CHAR_WIDTH + GUTTERS) * codeSize()));
 
@@ -37,6 +39,10 @@ export const diffMethods = {
   },
 
   // ── Opening a file in the centre ──────────────────────────────────────────
+
+  diffVisible(tab, space) {
+    return Boolean(tab && spaces().some((s) => s.active && s.id === space && s.tabs?.some((t) => t.id === tab && t.active)));
+  },
 
   diffTab(space = this.diffSpace) {
     const ids = new Set((spaces().find((s) => s.id === space)?.tabs ?? []).map((t) => t.id));
@@ -193,10 +199,13 @@ export const diffMethods = {
   },
 
   showRows(rows, paired) {
-    this.truncated = false;
-    this.rows = rows;
-    this.pairedRows = paired;
-    const lengths = rows.map((row) => row.text.length);
+    const { diff_lines: maxLines, line_length: maxLength } = this.settings.limits;
+    this.truncated = rows.length > maxLines || rows.some((row) => row.text.length > maxLength);
+    const clipped = (row) => row && ({ ...row, text: row.text.length > maxLength ? `${row.text.slice(0, maxLength)}…` : row.text });
+    this.rows = rows.slice(0, maxLines).map(clipped);
+    this.pairedRows = paired.slice(0, maxLines).map((row) => row.kind === "pair"
+      ? { ...row, left: clipped(row.left), right: clipped(row.right) } : clipped(row));
+    const lengths = this.rows.map((row) => row.text.length);
     this.width = scrollWidth(lengths);
   },
 
@@ -249,7 +258,10 @@ export const diffMethods = {
       const { rows, message } = await this.readConflict(path, root, on);
       return rows ? { conflict: rows } : { lines: [message] };
     }
-    return { lines: await this.readDiffLines(file, path, root, on) };
+    const args = this.diffArgs(), full = this.shownFull;
+    const key = JSON.stringify(["changes-diff", on ?? null, root, path, args, full]);
+    return { lines: await cachedQuery(key, this.scope === "commit" ? 1800000 : 1000,
+      () => this.readDiffLines(file, path, root, on, args, full)) };
   },
 
   // An untracked file has nothing to diff against, so every line is an addition.
@@ -266,16 +278,21 @@ export const diffMethods = {
     };
   },
 
-  async readDiffLines(file, path, root, on) {
-    const args = ["--literal-pathspecs", ...this.diffArgs()];
+  async readDiffLines(file, path, root, on, diffArgs = this.diffArgs(), full = this.shownFull) {
+    const args = ["--literal-pathspecs", ...diffArgs];
     // shortcut: a file over 1,000,000 lines still shows in pieces, fine for a diff view.
-    if (this.shownFull) args.push("--unified=1000000");
+    if (full) args.push("--unified=1000000");
     args.push("--no-ext-diff", "--no-textconv", "--no-color", "--", path);
     const result = await this.git(args, root, on);
     if (result.code !== 0) throw Error(result.stderr || "Cannot read diff");
     const all = result.stdout.replace(/\n$/, "").split("\n");
     const first = all.findIndex((line) => line.startsWith("@@"));
-    if (first >= 0) return all.slice(first);
+    if (first >= 0) {
+      // Retain one extra row/character to signal truncation without retaining
+      // an entire huge full-file diff in the cache.
+      const { diff_lines: maxLines, line_length: maxLength } = this.settings.limits;
+      return all.slice(first, first + maxLines + 1).map((line) => line.slice(0, maxLength + 1));
+    }
     return [file.binary ? "Binary file changed" : "No text diff (mode or submodule change)"];
   },
 
@@ -337,7 +354,14 @@ export const diffMethods = {
   },
 
   renderDiff() {
-    const root = Panel({ id: "xmux-changes-diff", framed: false });
+    const root = Panel({ id: "xmux-changes-diff", framed: false })
+      .on_mouse_down("right", (_e, cx) => {
+        if (!this.root || !this.path) return;
+        cx.stop_propagation();
+        showFileMenu(fileMenuTarget({ path: `${this.root}/${this.path}`, root: this.root, on: this.on }, {
+          space: this.diffSpace,
+        }));
+      });
     const split = this.diffLayout === "split";
     if (!this.layoutUsesOurHeader()) root.child(this.renderFileRow());
     if (this.error || this.note) root.child(Message(this.error || this.note, true));
@@ -394,151 +418,16 @@ export const diffMethods = {
   },
 
   renderDiffRows(split) {
-    const rows = split ? (this.pairedRows ?? []) : this.rows;
-    const listId = `diff-${this.context}-${this.path}-${this.scope}-${this.diffLayout}`;
-    const list = v_virtual_list(
-      listId,
-      rows.length,
-      rowHeight(),
-      (i) => String(i),
-      (range) =>
-        rows
-          .slice(range.start, range.end)
-          .map((row) => (split ? this.splitRow(row) : this.inlineRow(row))),
-    ).size_full();
-    return div()
-      .flex_1()
-      .min_h(0)
-      .relative()
-      .font_family(codeFont())
-      .text_size(codeSize())
-      .child(split ? this.scrollsTogether(list) : this.scrollsSideways(list))
-      .child(Scrollbar.vertical(listId).mode("scrolling").viewport_from_layout().absolute().inset_0());
-  },
-
-  // Side by side moves both columns with one offset, keeping the line numbers still.
-  scrollsTogether(list) {
-    return list.on_scroll_wheel((e, cx) => {
-      const delta = e.delta.x || (e.modifiers?.shift ? e.delta.y : 0);
-      if (!delta) return;
-      const furthest = Math.max(0, (this.width || 300) - 160);
-      this.splitOffset = Math.max(0, Math.min(furthest, this.splitOffset - delta));
-      cx.stop_propagation();
-      cx.notify();
-    });
-  },
-
-  scrollsSideways(list) {
-    return div()
-      .id("diff-x")
-      .size_full()
-      .overflow_x_scrollbar().mode("scrolling")
-      .child(
-        div()
-          .w_full()
-          .min_w(this.width || 300)
-          .h_full()
-          .child(list),
-      );
-  },
-
-  // The text colour and background of a row, by what kind of line it is.
-  rowLook(kind) {
-    const t = theme();
-    const tinted = (color) => ({ color, background: `${color}18` });
-    if (kind === "+" || kind === "incoming") return tinted(t.ansi2);
-    if (kind === "-") return tinted(t.ansi1);
-    if (kind === "yours") return tinted(t.accent);
-    if (kind === "base") return { color: t.dim, background: null };
-    if (kind === "marker") return { color: t.foreground, background: t.raised };
-    return { color: t.foreground, background: null };
-  },
-
-  inlineRow(row) {
-    const t = theme();
-    if (row.kind === "@")
-      return div().h(rowHeight()).px(12).w_full().bg(t.raised).text_color(t.accent).child(row.text);
-    const { color, background } = this.rowLook(row.kind);
-    const gutter = (value) =>
-      div()
-        .w(codeSize() * 3.5)
-        .flex_none()
-        .text_right()
-        .text_color(t.dim)
-        .child(value === undefined ? "" : String(value));
-    const sign = row.kind === "+" || row.kind === "-" ? row.kind : "";
-    return h_flex()
-      .h(rowHeight())
-      .w_full()
-      .gap(8)
-      .items_center()
-      .when(Boolean(background), (el) => el.bg(background))
-      .when(!this.conflictCount, (el) => el.child(gutter(row.old)))
-      .child(gutter(row.next))
-      .child(div().w(codeSize()).flex_none().text_color(color).child(sign))
-      .child(
-        div()
-          .flex_1()
-          .min_w(0)
-          .whitespace_nowrap()
-          .text_color(color)
-          .child(row.text || " "),
-      );
-  },
-
-  splitRow(row) {
-    const t = theme();
-    if (row.kind !== "pair")
-      return div()
-        .h(rowHeight())
-        .px(12)
-        .w_full()
-        .bg(t.raised)
-        .text_color(row.kind === "@" ? t.accent : t.dim)
-        .truncate()
-        .child(row.text);
-    const side = (entry, line, right) => {
-      const { color, background } = this.rowLook(entry?.kind);
-      const sign = entry?.kind === "+" || entry?.kind === "-" ? entry.kind : "";
-      return h_flex()
-        .flex_1()
-        .min_w(0)
-        .h_full()
-        .gap(6)
-        .items_center()
-        .overflow_hidden()
-        .when(right, (el) => el.border_l(1).border_color(t.border))
-        .when(Boolean(background), (el) => el.bg(background))
-        .when(!entry, (el) => el.bg(t.raised))
-        .child(
-          div()
-            .w(codeSize() * 3.5)
-            .flex_none()
-            .text_right()
-            .text_color(t.dim)
-            .child(entry ? String(line ?? "") : ""),
-        )
-        .child(div().w(codeSize()).flex_none().text_color(color).child(sign))
-        .child(
-          div()
-            .flex_1()
-            .min_w(0)
-            .overflow_hidden()
-            .child(
-              div()
-                .w(this.width || 300)
-                .flex_none()
-                .ml(-this.splitOffset)
-                .whitespace_nowrap()
-                .text_color(color)
-                .child(entry?.text || " "),
-            ),
-        );
-    };
-    return h_flex()
-      .h(rowHeight())
-      .w_full()
-      .child(side(row.left, row.left?.old, false))
-      .child(side(row.right, row.right?.next, true));
+    let columns = [this.rows];
+    if (split) {
+      const paired = this.pairedRows ?? [];
+      columns = ["left", "right"].map((side) => paired.map((row) => row.kind === "pair"
+        ? { ...(row[side] ?? { text: "", kind: " " }),
+          old: side === "left" ? row.left?.old : undefined,
+          next: side === "right" ? row.right?.next : undefined }
+        : row));
+    }
+    return CodeRows({ id: `diff-${this.context}-${this.path}-${this.scope}-${this.diffLayout}`,
+      columns, font: codeFont(), size: codeSize() });
   },
 };

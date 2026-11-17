@@ -26,6 +26,8 @@ xmux-new-menu
 xmux-quick-dialog
 xmux-status'
 
+node "$REPO_ROOT/scripts/sync-common.mjs" --check
+
 mkdir -p "$APP_HOME/layouts" "$APP_HOME/themes" "$APP_HOME/mods" "$BACKUP"
 
 backup_target() {
@@ -56,6 +58,8 @@ for mod in $XMUX_MODS; do
     "$HERDR_BIN" check "$APP_HOME/mods/$mod/main.js" >/dev/null
   fi
 done
+
+node "$REPO_ROOT/scripts/configure-keys.mjs" "$APP_HOME" "$BACKUP"
 
 if [ -n "$HERDR_BIN" ]; then
   "$HERDR_BIN" do layout.switch '{"name":"XMux"}' >/dev/null 2>&1 || true

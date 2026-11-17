@@ -54,7 +54,8 @@ cd ~/works/herdr-xmux
 
 The installer links the layout, theme, and XMux mods into
 `~/.config/herdr-app`, backs up replaced XMux files under `retired/`, checks
-the mods, and switches the running app to the `XMux` layout. Set
+the mods, adds terminal-directory shortcuts in `layout:XMux` (preserving custom
+bindings), and switches the running app to the `XMux` layout. Set
 `HERDR_APP_HOME` for another configuration directory or `HERDR_BIN` when
 `herdr-app` is not on `PATH`.
 
@@ -79,7 +80,8 @@ herdr-app do layout.switch '{"name":"XMux"}'
 
 ```sh
 python3 -m json.tool layouts/XMux.json >/dev/null
-node --test tests/quick-dialog.test.mjs
+node scripts/sync-common.mjs --check
+node --test tests/*.test.mjs
 find mods -path '*/xmux-*/*.js' -type f -print0 | xargs -0 -n1 node --check
 for mod in mods/xmux-*; do herdr-app check "$mod"; done
 herdr-app status
@@ -100,6 +102,9 @@ cmd-shift-t      -> xmux-status.reopen-closed
 cmd-r (terminal) -> send form feed, matching Ghostty
 cmd-` (XMux)     -> xmux-status.quick-dialog
 cmd-w (XMux)     -> xmux-status.close-current
+cmd-t (XMux)     -> xmux-status.new-terminal
+cmd-d (XMux)     -> xmux-status.split-right
+cmd-shift-d (XMux) -> xmux-status.split-down
 ```
 
 The XMux bindings belong in a `layout:XMux` section. `close-current` closes
@@ -127,3 +132,55 @@ included in the repository, and the ignore rules cover common environment
 files, certificates, and private keys.
 
 Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE).
+
+
+## Shared modules and refresh behavior
+
+`lib/xmux/` is the source for workspace context, query caching, provider discovery,
+CodeViewer, tab titles, and file menus. Herdr confines imports to each mod directory, so run
+`node scripts/sync-common.mjs` after changing those files and include the generated
+`mods/*/shared/` copies. The installer checks for stale copies. Node.js is required.
+
+New terminals keep the active terminal's exact cwd. On a file/diff tab they use
+that space's project directory, including remote spaces whose persisted folder
+is empty. Preview tabs retain the last repository context for Changes/PRs/Issues.
+
+Changes reads only while visible. Local notifications debounce for 300ms; local
+repositories with a working watcher poll as a 60s fallback, remote repositories
+keep the configured status interval (10s by default). A hidden diff stops reading.
+Hidden file viewers also stop their file/Git polls. Status reads coalesce for 1s,
+repository summaries cache for 10s, and commit-file lists/diffs cache for 30min.
+Stage/unstage/commit and manual refresh invalidate relevant repository reads.
+
+PRs/Issues refresh only when visible and idle (60s by default). Lists and branch
+queries cache for 60s; details/jobs for 30s; repository discovery for 5min and
+provider detection for 10min. Equivalent in-flight reads join one request.
+Known hosts do not need a separate provider API probe. Small discovery metadata
+is shared across mod instances; API payloads stay in bounded runtime memory.
+Failed reads back off for 5–60s, keeping existing content. Read CLI calls have
+explicit timeouts. Hosting requests use local gh/glab authentication even for a
+remote checkout; Git operations run on that checkout's machine.
+
+Manual refresh bypasses cached reads and errors. Successful API writes invalidate
+the panel's API cache. After changing CLI accounts or login state, use manual
+refresh; account changes made outside Herdr are not automatically detected.
+
+CodeViewer wraps native readonly Editor for ordinary source. Changes-marked source,
+working-tree/commit/PR diffs share one decorated renderer: selectable native text
+per column, separate line-number/background layers, common font and line height.
+Decorated files over 2,000 rows fall back to the complete Editor source view.
+Diff limits remain configurable (1,500 rows by default). Split columns share a
+vertical viewport and scroll horizontally independently. Native TextView currently
+trims whitespace at the outer boundaries of copied selections; use ordinary source
+(with Changes off) when those boundary spaces must be preserved exactly.
+
+File previews restore their owning space and machine from the current client's
+space list, since Herdr syncs mod props without rewriting machine-qualified IDs.
+Changes resolves a preview's source before falling back to its space's terminals
+and saved directory. File trees, previews, and Changes/Commits lists share the
+Files context menu; VS Code opens the owning workspace and file, using the
+configured SSH target for remote files.
+
+Agent tabs follow Core's current task title, including inactive remote tabs.
+Legacy labels matching the agent's program name are treated as automatic titles;
+other explicit tab names take precedence. New agents start without a fixed tab name.

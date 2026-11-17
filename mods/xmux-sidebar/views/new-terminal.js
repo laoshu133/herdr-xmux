@@ -1,4 +1,5 @@
-import { openOverlay, panes, run, setShared } from "herdr";
+import { openOverlay } from "herdr";
+import { openTerminalTab } from "../shared/context.js";
 
 // tab.new returns no id; the tabs mod recognizes the new entry on its next render.
 export function newTerminalClick(space, current, event) {
@@ -12,19 +13,5 @@ export function newTerminalClick(space, current, event) {
     });
     return;
   }
-  const mine = space?.tabs ?? [];
-  const active = mine.find((tab) => tab.active);
-  const existing = new Set(mine.map((tab) => tab.id));
-  const cwd =
-    current?.tab === active?.id && current?.cwd
-      ? current.cwd
-      : active
-        ? panes().find((p) => p.tab === active.id && p.cwd)?.cwd
-        : undefined;
-  run("tab.new", { space: space?.id, folder: cwd });
-  setShared("xmux.pending-append", {
-    space: space?.id,
-    existing: [...existing],
-    index: mine.length + 1,
-  });
+  openTerminalTab(space, {}, current);
 }

@@ -59,7 +59,7 @@ export const listMethods = {
               icon: "refresh",
               label: "Retry",
               disabled: this.busy || this.mutating,
-              onClick: (cx) => this.refresh(cx),
+              onClick: (cx) => this.refresh(cx, true),
             }),
           ),
       );
@@ -89,7 +89,7 @@ export const listMethods = {
       label: "Refresh pull requests",
       spinning: Boolean(this.busy),
       disabled: this.busy || this.mutating,
-      onClick: (cx) => this.refresh(cx),
+      onClick: (cx) => this.refresh(cx, true),
     });
   },
 
@@ -354,7 +354,7 @@ export const listMethods = {
                 disabled: this.busy,
                 onClick: (cx) => {
                   this.error = null;
-                  this.refresh(cx);
+                  this.refresh(cx, true);
                 },
               }),
             ),

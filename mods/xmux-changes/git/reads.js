@@ -8,21 +8,15 @@ const LOG_FORMAT = "--format=%H%x00%h%x00%an%x00%ae%x00%at%x00%s%x00%b%x1e";
 const lines = (text) => text.split("\n").filter(Boolean);
 
 export async function readStatus(git) {
-  const status = await git([
-    "status",
-    "--porcelain=v1",
-    "-z",
-    "--no-renames",
-    "--untracked-files=all",
+  const [status, staged, unstaged, head] = await Promise.all([
+    git(["status", "--porcelain=v1", "-z", "--no-renames", "--untracked-files=all"]),
+    git(["diff", "--cached", "--numstat", "-z", ...NO_HELPERS]),
+    git(["diff", "--numstat", "-z", ...NO_HELPERS]),
+    git(["rev-parse", "--verify", "HEAD"]),
   ]);
   if (status.code !== 0) throw Error(status.stderr || "Cannot read changes");
-
-  const staged = await git(["diff", "--cached", "--numstat", "-z", ...NO_HELPERS]);
-  const unstaged = await git(["diff", "--numstat", "-z", ...NO_HELPERS]);
   if (staged.code !== 0) throw Error(staged.stderr || "Cannot read change statistics");
   if (unstaged.code !== 0) throw Error(unstaged.stderr || "Cannot read change statistics");
-
-  const head = await git(["rev-parse", "--verify", "HEAD"]);
   return {
     files: changedFiles(status.stdout, [staged.stdout, unstaged.stdout]),
     hasHead: head.code === 0,

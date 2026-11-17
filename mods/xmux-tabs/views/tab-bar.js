@@ -2,6 +2,7 @@
 import { div, svg, image } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { spaces, panes, focused, run, openOverlay, setShared, theme, window, shared } from "herdr";
+import { openTerminalTab } from "../shared/context.js";
 import { TEXT, Icon, IconButton, DropLine } from "./ui.js";
 import { automaticTabTitle, tabLead } from "./tab-title.js";
 
@@ -19,23 +20,6 @@ const contains = (bounds, point) =>
   point.y >= bounds.y &&
   point.y <= bounds.y + bounds.height;
 
-function newTerminal(space, current) {
-  const mine = space?.tabs ?? [];
-  const active = mine.find((tab) => tab.active);
-  const existing = new Set(mine.map((tab) => tab.id));
-  const cwd =
-    current?.tab === active?.id && current?.cwd
-      ? current.cwd
-      : active
-        ? panes().find((p) => p.tab === active.id && p.cwd)?.cwd
-        : undefined;
-  run("tab.new", { space: space?.id, folder: cwd });
-  setShared("xmux.pending-append", {
-    space: space?.id,
-    existing: [...existing],
-    index: mine.length + 1,
-  });
-}
 
 function openNewMenu(space) {
   openOverlay({
@@ -264,7 +248,7 @@ export const tabBarMethods = {
     return this.simple("tab-new", Icon("plus", 14), "New terminal · Shift-click for more", (event) => {
       const space = spaces().find((s) => s.active);
       if (event.modifiers?.shift) openNewMenu(space);
-      else newTerminal(space, focused());
+      else openTerminalTab(space, {}, focused());
     })
       .on_mouse_move((event, cx) => {
         if (tabs.length) this.hoverTab(tabs.at(-1), asLast(event), cx);

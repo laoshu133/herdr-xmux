@@ -168,7 +168,7 @@ export function parseHunks(diff) {
   return hunks;
 }
 
-const cleanLine = (line) => line.replace(/\r$/, "").replace(/\t/g, "    ");
+const cleanLine = (line) => line.replace(/\r$/, "");
 export const fileLinesOf = (text) => text.split("\n").map(cleanLine);
 
 // What to draw, top to bottom: the file's lines, and where a change is open, the lines it

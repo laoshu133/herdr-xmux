@@ -1,7 +1,7 @@
 // Provider adapters for Branch Issue. All credentials remain in gh/glab.
 import { exec } from "herdr";
 
-const opts = (sp) => ({ cwd: sp?.machine ? undefined : sp?.folder, on: sp?.machine });
+const opts = (sp) => ({ cwd: sp?.machine ? undefined : sp?.folder, on: null, timeout: 15000 });
 const project = (p, repo) => `${p?.host || "gitlab.com"}/${repo}`;
 
 function failure(result, tool) {

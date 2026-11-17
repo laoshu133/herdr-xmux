@@ -29,7 +29,8 @@ export const paneHeaderMethods = {
       .hover((s) => s.bg(t.hover).text_color(t.foreground))
       .on_click((_e, cx) => {
         cx.stop_propagation();
-        run(command, args);
+        if (command === "pane.split") run(`xmux-status.split-${args.direction}:${args.pane}`);
+        else run(command, args);
       })
       .child(svg(`mods/xmux-changes/icons/${icon}.svg`).size(14));
   },

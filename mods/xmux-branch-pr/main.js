@@ -12,8 +12,10 @@
 //   views/files.js        the Files tab, and handing a file's diff to XMux Changes
 // github/model.js says what GitHub's answers mean; views/ui.js holds every look.
 import { View } from "gpui-kit";
+import { activeWorkspace, workspaceKey } from "./shared/context.js";
+import { configureQueries } from "./shared/query-cache.js";
 import { InputState, TextareaState } from "gpui-base";
-import { spaces, panes, nextCommand, layout, readTextFile, appHome } from "herdr";
+import { nextCommand, layout, readTextFile, appHome } from "herdr";
 import { loadSettings, duration } from "./settings.js";
 import { savedMethods } from "./state/saved.js";
 import { discoveryMethods } from "./github/discovery.js";
@@ -33,7 +35,6 @@ import { Panel } from "./views/ui.js";
 
 const CONTEXT_POLL_MS = 1000;
 const REFRESH_INTERVAL_MS = 60000;
-const FIRST_LOAD_LIMIT_MS = 30000;
 const NOTICE_MS = 5000;
 // Preferences a person may change in the installed mod.json under `settings`.
 const DEFAULT_SETTINGS = {
@@ -44,28 +45,9 @@ const DEFAULT_SETTINGS = {
   tools: { github: "gh", gitlab: "glab" },
 };
 
-// Each space's last terminal folder and branch.
-const lastTerminal = new Map();
-
-function activeSpace() {
-  const sp = spaces().find((s) => s.active);
-  if (!sp) return null;
-  const tab = sp.tabs?.find((t) => t.active)?.id;
-  const candidates = panes().filter((p) => p.tab === tab && p.cwd);
-  const current = candidates.find((p) => p.focused) ?? candidates[0];
-  if (current) lastTerminal.set(sp.id, { folder: current.cwd, branch: current.branch });
-  // A tab with no terminal, such as a diff, keeps the last one's, so the PR isn't read again.
-  const last = lastTerminal.get(sp.id);
-  return { ...sp, folder: last?.folder ?? sp.folder, branch: last?.branch ?? sp.branch };
-}
-
-function spaceContextKey(space) {
-  if (!space) return "";
-  return `${space.machine ?? "local"}:${space.id}:${space.folder}:${space.branch ?? ""}`;
-}
-
 class PullRequests extends View {
   init(_props, cx) {
+    configureQueries(cx);
     this.view = localStorage.getItem("view") === "all" ? "all" : "branch";
     this.reopenSaved = true;
     this.closedGroups = new Set(this.readStoredList("closed-groups"));
@@ -126,8 +108,8 @@ class PullRequests extends View {
     this.startPolling(cx);
     this.listenForCommands(cx);
 
-    const space = activeSpace();
-    this.changeSpace(space, spaceContextKey(space), cx);
+    const space = panelShown(layout(), "xmux-branch-pr") ? activeWorkspace() : null;
+    this.changeSpace(space, workspaceKey(space), cx);
   }
 
   // Read the installed mod.json once; list defaults apply until a saved view exists.
@@ -154,12 +136,6 @@ class PullRequests extends View {
 
   startPolling(cx) {
     cx.timer.every(CONTEXT_POLL_MS, (cx) => {
-      // A read that never answers mustn't leave the tabs locked; the helper itself
-      // gives up after 26 seconds.
-      if (Date.now() - this.contextSince > FIRST_LOAD_LIMIT_MS) {
-        this.listLoaded = true;
-        this.branchLoaded = true;
-      }
       // A confirmation says its piece and goes; an error stays until it's dealt with.
       if (this.notice !== this.noticeShown) {
         this.noticeShown = this.notice;
@@ -168,8 +144,9 @@ class PullRequests extends View {
         this.notice = null;
         cx.notify();
       }
-      const sp = activeSpace();
-      const key = spaceContextKey(sp);
+      if (!panelShown(layout(), "xmux-branch-pr")) return;
+      const sp = activeWorkspace();
+      const key = workspaceKey(sp);
       if (key !== this.spaceKey) this.changeSpace(sp, key, cx);
       this.rememberView();
       const minute = Math.floor(Date.now() / 60000);
@@ -190,7 +167,7 @@ class PullRequests extends View {
     cx.spawn(async (cx) => {
       for (;;) {
         const command = await nextCommand();
-        if (command === "refresh") this.refresh(cx);
+        if (command === "refresh") this.refresh(cx, true);
         cx.notify();
       }
     });

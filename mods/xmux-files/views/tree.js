@@ -1,7 +1,8 @@
 // The sidebar: the folder tree, and the box for a prompt to an agent.
 import { div } from "gpui-kit";
 import { h_flex, v_flex, Scrollbar } from "gpui-base";
-import { openOverlay, panes, shared, spaces, theme } from "herdr";
+import { panes, shared, spaces, theme } from "herdr";
+import { fileMenuTarget, showFileMenu } from "../shared/file-menu.js";
 import { baseName, holdsChange, TOTAL_ROWS } from "../files/model.js";
 import { viewerEntries } from "../actions/open.js";
 import { foundEditors } from "../actions/outside.js";
@@ -24,26 +25,16 @@ export const treeMethods = {
   targetOf(relative, dir) {
     const path = `${this.root}/${relative}`;
     const change = this.marks[path];
-    return {
-      path,
-      root: this.root,
-      on: this.on ?? null,
+    return fileMenuTarget({ path, root: this.root, on: this.on }, {
       top: this.top,
       dir,
-      relative: this.top && path.startsWith(`${this.top}/`) ? path.slice(this.top.length + 1) : relative,
       changed: Boolean(change),
       staged: Boolean(change?.staged),
-    };
+    });
   },
 
   showRowMenu(target) {
-    openOverlay({
-      mod: "xmux-files",
-      kind: "popup",
-      width: 260,
-      height: 520,
-      props: { mode: "menu", target },
-    });
+    showFileMenu(target);
   },
 
   fileOf(relative) {

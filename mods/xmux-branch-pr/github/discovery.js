@@ -2,6 +2,8 @@
 // checkout and its branch. A token per kind of read lets an old answer finish
 // without replacing what's on screen after navigation.
 import { exec } from "herdr";
+import { cachedQuery } from "../shared/query-cache.js";
+import { rememberRoot } from "../shared/context.js";
 import { repositoryFromRemote, searchQuery } from "./model.js";
 import { resolveProvider } from "./provider.js";
 
@@ -58,24 +60,26 @@ export const discoveryMethods = {
   },
 
   async detectRepo(sp) {
-    const options = { cwd: sp.folder, on: sp.machine };
-    const remote = (name) => exec("git", ["remote", "get-url", name], options);
-    let result = await remote("upstream");
-    if (result.code !== 0) {
-      const branch = await exec("git", ["symbolic-ref", "--quiet", "--short", "HEAD"], options);
-      if (branch.code === 0) {
-        const tracking = await exec(
-          "git",
-          ["config", "--get", `branch.${branch.stdout.trim()}.remote`],
-          options,
-        );
-        if (tracking.code === 0 && tracking.stdout.trim() !== ".")
-          result = await remote(tracking.stdout.trim());
+    return cachedQuery(JSON.stringify(["detect-repo", sp.machine ?? null, sp.folder, this.settings.tools ?? null]), 300000, async () => {
+      const options = { cwd: sp.folder, on: sp.machine, timeout: 5000, tools: this.settings.tools };
+      const remote = (name) => exec("git", ["remote", "get-url", name], options);
+      let result = await remote("upstream");
+      if (result.code !== 0) {
+        const branch = await exec("git", ["symbolic-ref", "--quiet", "--short", "HEAD"], options);
+        if (branch.code === 0) {
+          const tracking = await exec(
+            "git",
+            ["config", "--get", `branch.${branch.stdout.trim()}.remote`],
+            options,
+          );
+          if (tracking.code === 0 && tracking.stdout.trim() !== ".")
+            result = await remote(tracking.stdout.trim());
+        }
+        if (result.code !== 0) result = await remote("origin");
       }
-      if (result.code !== 0) result = await remote("origin");
-    }
-    if (result.code !== 0) throw new Error("No GitHub or GitLab remote found for this directory.");
-    return resolveProvider(result.stdout, options);
+      if (result.code !== 0) throw new Error("No GitHub or GitLab remote found for this directory.");
+      return resolveProvider(result.stdout, options);
+    }, { share: true });
   },
 
   soleBranchPR() {
@@ -93,11 +97,11 @@ export const discoveryMethods = {
   // The PRs from this checkout's branch. A worktree made for a PR records its exact
   // association, which beats searching by branch name, ambiguous across forks.
   loadBranchPRs(cx) {
-    if (!this.sp?.folder || this.mutating) return;
+    if (!this.sp?.folder || this.mutating || this.branchLoading) return;
     const token = ++this.branchToken;
     const sp = this.sp;
     const key = this.spaceKey;
-    const options = { cwd: sp.folder, on: sp.machine };
+    const options = { cwd: sp.folder, on: sp.machine, timeout: 5000, tools: this.settings.tools };
     this.branchLoading = true;
     cx.spawn(async (cx) => {
       try {
@@ -113,10 +117,16 @@ export const discoveryMethods = {
           ["config", "--get", `branch.${this.branch}.herdr-pr`],
           options,
         );
+        if (token !== this.branchToken || key !== this.spaceKey) return;
+        const provider = this.provider;
         const association = /^([\w.-]+\/[\w.-]+)#([1-9][0-9]*)$/.exec(binding.stdout?.trim() ?? "");
         if (association) {
+          const remotes = await this.discoverRemotes(sp);
+          if (token !== this.branchToken || key !== this.spaceKey) return;
+          const remote = remotes.find((r) => r.repo === association[1]);
           const linked = await this.api(
-            { action: "detail", repo: association[1], number: Number(association[2]), provider: this.provider },
+            { action: "detail", repo: association[1], number: Number(association[2]),
+              provider: remote?.provider ? { kind: remote.provider, host: remote.host } : provider },
             sp,
           );
           if (token !== this.branchToken || key !== this.spaceKey) return;
@@ -124,12 +134,13 @@ export const discoveryMethods = {
           return;
         }
         const remotes = await this.discoverRemotes(sp);
+        if (token !== this.branchToken || key !== this.spaceKey) return;
         const repositories = [...new Set(remotes.map((r) => r.repo).filter(Boolean))];
         const results = await Promise.allSettled(
           repositories.map((repo) => {
             const remote = remotes.find((r) => r.repo === repo);
             return this.api(
-              { action: "branch", repo, provider: remote?.provider ? { kind: remote.provider, host: remote.host } : this.provider, branch: this.branch },
+              { action: "branch", repo, provider: remote?.provider ? { kind: remote.provider, host: remote.host } : provider, branch: this.branch },
               sp,
             );
           }),
@@ -173,22 +184,31 @@ export const discoveryMethods = {
   },
 
   async discoverRemotes(sp) {
-    const options = { cwd: sp.folder, on: sp.machine };
-    const result = await exec("git", ["remote"], options);
-    if (result.code !== 0) throw new Error("Cannot read Git remotes for this directory.");
-    const names = [...new Set(result.stdout.trim().split(/\r?\n/).filter(Boolean))].sort();
-    return Promise.all(
-      names.map(async (name) => {
-        const url = await exec("git", ["remote", "get-url", name], options);
-        try {
-          if (url.code !== 0) throw new Error("Unavailable");
-          const provider = await resolveProvider(url.stdout, options);
-          return { name, repo: provider.repo, provider: provider.kind, host: provider.host };
-        } catch {
-          return { name, repo: null };
-        }
-      }),
-    );
+    return cachedQuery(JSON.stringify(["remotes", sp.machine ?? null, sp.folder, this.settings.tools ?? null]), 300000, async () => {
+      const top = await exec("git", ["rev-parse", "--show-toplevel"], { cwd: sp.folder, on: sp.machine, timeout: 5000 });
+      if (top.code === 0) rememberRoot(sp.folder, top.stdout.trim(), sp.machine);
+      const options = { cwd: sp.folder, on: sp.machine, timeout: 5000, tools: this.settings.tools };
+      const result = await exec("git", ["remote"], options);
+      if (result.code !== 0) throw new Error("Cannot read Git remotes for this directory.");
+      const names = [...new Set(result.stdout.trim().split(/\r?\n/).filter(Boolean))].sort();
+      let lastError;
+      const entries = await Promise.all(
+        names.map(async (name) => {
+          const url = await exec("git", ["remote", "get-url", name], options);
+          try {
+            if (url.code !== 0) throw new Error("Unavailable");
+            const provider = await resolveProvider(url.stdout, options);
+            return { name, repo: provider.repo, provider: provider.kind, host: provider.host };
+          } catch (error) {
+            lastError = error;
+            return { name, repo: null };
+          }
+        }),
+      );
+      if (!entries.some((entry) => entry.repo))
+        throw lastError ?? new Error("No GitHub or GitLab remote found for this directory.");
+      return entries;
+    }, { share: true });
   },
 
   chooseRemote(name, cx) {
@@ -208,6 +228,7 @@ export const discoveryMethods = {
   },
 
   resolveRepo(cx) {
+    if (this.repoLoading) return;
     if (!this.sp?.folder) return;
     const token = ++this.repoToken;
     const key = this.spaceKey;

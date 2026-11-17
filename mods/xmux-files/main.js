@@ -17,7 +17,7 @@ import { appHome, exec, hc, nextCommand, props, setShared, shared, spaces, readT
 import { loadSettings, duration } from "./settings.js";
 import { followFileIcons } from "./files/file-icons.js";
 import { readMethods } from "./files/reads.js";
-import { openMethods } from "./actions/open.js";
+import { openMethods, restoreViewerSource } from "./actions/open.js";
 import { outsideMethods } from "./actions/outside.js";
 import { agentMethods } from "./actions/agents.js";
 import { menuMethods } from "./actions/menus.js";
@@ -36,7 +36,7 @@ class XmuxFiles extends View {
     this.mode = p.mode ?? "sidebar";
     if (this.mode === "menu") {
       this.menuTarget = p.target;
-      this.menuSpace = spaces().find((s) => s.active)?.id;
+      this.menuSpace = p.target?.space ?? spaces().find((s) => s.active)?.id;
       return;
     }
     this.menuFocus = cx.focus_handle();
@@ -52,8 +52,11 @@ class XmuxFiles extends View {
 
   initViewer(p, cx) {
     this.viewerId = p.viewer;
-    this.viewerSpace = p.space;
-    this.viewerFile = p.file;
+    const saved = this.viewerEntry();
+    const source = restoreViewerSource(saved ?? { space: p.space, file: p.file });
+    if (JSON.stringify(source) !== JSON.stringify(saved)) this.setViewer(this.viewerId, source);
+    this.viewerSpace = source.space;
+    this.viewerFile = source.file;
     this.viewerMarkdown = p.markdown;
     this.gutterOn = true;
     this.markdownDefault = DEFAULT_SETTINGS.markdown;
@@ -73,7 +76,7 @@ class XmuxFiles extends View {
       appHome,
       now: Date.now,
     });
-    this.file = p.file;
+    this.file = source.file;
     this.readFile(cx);
     this.syncViewer(cx);
     this.renderMermaid(cx);
@@ -92,10 +95,17 @@ class XmuxFiles extends View {
         this.readFile(cx);
       }
       cx.timer.every(Math.max(500, duration(settings.refresh.file, 2000)), (cx) => {
+        if (!this.viewerVisible()) return;
         this.readFile(cx);
         this.readHunks(cx);
       });
     });
+  }
+
+  viewerVisible() {
+    const entry = this.viewerEntry();
+    return spaces().some((s) => s.active && s.id === (entry?.space ?? this.viewerSpace) &&
+      s.tabs?.some((t) => t.active && t.id === entry?.tab));
   }
 
   initSidebar(cx) {
