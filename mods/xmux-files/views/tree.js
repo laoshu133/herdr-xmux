@@ -1,7 +1,7 @@
 // The sidebar: the folder tree, and the box for a prompt to an agent.
 import { div } from "gpui-kit";
 import { h_flex, v_flex, Scrollbar } from "gpui-base";
-import { openOverlay, shared, theme } from "herdr";
+import { openOverlay, panes, shared, spaces, theme } from "herdr";
 import { baseName, holdsChange, TOTAL_ROWS } from "../files/model.js";
 import { viewerEntries } from "../actions/open.js";
 import { foundEditors } from "../actions/outside.js";
@@ -50,6 +50,17 @@ export const treeMethods = {
     return { path: `${this.root}/${relative}`, root: this.root, on: this.on ?? null };
   },
 
+  // Open elsewhere is still just a file row. Only the file shown by the active tab is selected;
+  // focusing this sidebar does not clear it, but changing the tab or space does.
+  activeFilePath() {
+    const space = spaces().find((s) => s.active);
+    const tab = space?.tabs.find((t) => t.active)?.id;
+    if (!space || !tab || !panes().some((p) => p.tab === tab && p.mod === "xmux-files")) return null;
+    return Object.values(viewerEntries()).find(
+      (v) => v.space === space.id && v.tab === tab && (v.file?.on ?? null) === (this.on ?? null),
+    )?.file?.path ?? null;
+  },
+
   clickFile(relative, event, cx) {
     const file = this.fileOf(relative);
     this.openFile(file, cx);
@@ -60,7 +71,7 @@ export const treeMethods = {
     const open = this.folders.has(relative);
     const change = this.marks[path];
     const color = dir ? (holdsChange(this.marks, path) ? t.ansi3 : null) : markColor(change?.mark, t);
-    const selected = !dir && Object.values(viewerEntries()).some((v) => v.file?.path === path);
+    const selected = !dir && path === this.activeFilePath();
     return h_flex()
       .id(`files-row-${relative}`)
       .h(26)

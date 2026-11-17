@@ -54,11 +54,14 @@ class XmuxFiles extends View {
     this.viewerId = p.viewer;
     this.viewerSpace = p.space;
     this.viewerFile = p.file;
+    this.viewerMarkdown = p.markdown;
     this.gutterOn = true;
     this.markdownDefault = DEFAULT_SETTINGS.markdown;
     this.hunks = [];
     this.openHunks = new Set();
-    this.imageZoom = 1;
+    this.imageScale = 1;
+    this.imagePan = { x: 0, y: 0 };
+    this.imageFit = null;
     this.wrap = shared("xmux-files.wrap") ?? false;
     this.imageLoader = createImages({ exec, hc, appHome: () => appHome() });
     this.diagramLoader = createDiagrams({

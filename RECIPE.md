@@ -16,6 +16,13 @@ Changes, PRs, and Issues panels.
   terminal and agent picker. `Cmd+Ctrl+T` opens the same picker.
 - `Cmd+Shift+T` starts a fresh terminal in the most recently closed tab's
   directory, at its previous position. It does not resume the old process.
+- `` Cmd+` `` shows or hides a draggable local shell in `xmux-quick-dialog`.
+  Hiding preserves the shell; closing or shell exit removes the window.
+  `xmux-status` owns its toggle command and routes `Cmd+W` to it while focused.
+  Opening quietly attempts terminal focus; unsupported clients keep the
+  draggable window and require a click to type. Each opening retries, so
+  upstream support is used automatically. The [overlay focus patch](patches/README.md)
+  is optional for Herdr 0.1.16.
 - Files, Changes, PRs, and Issues panels with repository-aware actions.
 - One-pixel pane frames, split spacing, focus treatment, and continuous shell
   boundaries.
@@ -42,6 +49,7 @@ shared shell, tab, and status boundaries remain continuous.
 | `themes/ghostty-solarized-dark.json` | Shared terminal and app theme. |
 | `mods/xmux-tabs` | Tabs, scrolling, titles, and panel actions. |
 | `mods/xmux-sidebar` | Window chrome, spaces, agents, machines, and quick actions. |
+| `mods/xmux-quick-dialog` | Draggable local terminal title bar and controls. |
 | `mods/xmux-files` | File tree and file viewer. |
 | `mods/xmux-changes` | Changes, staging, commits, and diffs. |
 | `mods/xmux-branch-pr` | Pull request workflow. |

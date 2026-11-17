@@ -2,7 +2,7 @@
 // belongs in the code editor it can open.
 import { div, image } from "gpui-kit";
 import { h_flex, v_flex, Editor, EditorState, Scrollbar, v_virtual_list } from "gpui-base";
-import { exec, focused, layout, panes, readTextFile, setShared, theme } from "herdr";
+import { exec, focused, layout, panes, readTextFile, setShared, shared, theme } from "herdr";
 import {
   baseName,
   buildRows,
@@ -29,7 +29,18 @@ const LINE_COLUMNS = 6; // The number column and a margin, in the same units.
 const rowHeight = () => Math.round(codeSize() * 1.6);
 const REMOVED_ROW = 8;
 
-const ZOOMS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3];
+const IMAGE_PAD = 16;
+const MIN_ZOOM = 0.1, MAX_ZOOM = 8;
+
+// A picture fits both dimensions at first, but small pictures never start enlarged.
+export function fittedScale(image, viewport) {
+  if (!image || !viewport) return 1;
+  const roomW = Math.max(1, viewport.width - IMAGE_PAD * 2);
+  const roomH = Math.max(1, viewport.height - IMAGE_PAD * 2);
+  return Math.min(1, roomW / image.width, roomH / image.height);
+}
+
+const clamp = (n, low, high) => Math.max(low, Math.min(high, n));
 
 export const viewerMethods = {
   // What this tab shows: the registry, then what it was opened with, after a restart.
@@ -65,7 +76,9 @@ export const viewerMethods = {
       this.code = null;
       this.hunks = [];
       this.openHunks = new Set();
-      this.imageZoom = 1;
+      this.imageScale = 1;
+      this.imageFit = null;
+      this.imagePan = { x: 0, y: 0 };
       this.readFile(cx);
       this.readHunks(cx);
       cx.notify();
@@ -95,6 +108,7 @@ export const viewerMethods = {
       if (this.file?.path !== file.path) return;
       if (JSON.stringify(marks) !== JSON.stringify(this.hunks)) {
         this.hunks = marks;
+        if (this.text !== undefined) this.syncCodeState(file, this.text);
         cx.notify();
       }
     });
@@ -103,10 +117,9 @@ export const viewerMethods = {
   // Only a real change touches the view, so the place you're reading stays put.
   readFile(cx) {
     const file = this.viewerFile ?? this.file;
-    if (file && isImage(file.path)) return this.readImage(cx);
-    if (isSvg(file.path) && this.markdownView() === "code") this.imageShown = null;
+    if (file && isImage(file.path) && !(isSvg(file.path) && this.markdownView() === "code"))
+      return this.readImage(cx);
     if (!file || this.reading) return;
-    if (isSvg(file.path) && this.markdownView() === "code") this.text = undefined;
     this.reading = true;
     cx.spawn(async (cx) => {
       let shown;
@@ -117,6 +130,7 @@ export const viewerMethods = {
       }
       this.reading = false;
       if (this.file?.path !== file.path) return;
+      if (isSvg(file.path) && this.markdownView() !== "code") return;
       if (shown.problem) {
         this.problem = shown.problem;
         this.text = undefined;
@@ -125,10 +139,7 @@ export const viewerMethods = {
       } else if (shown.text !== this.text) {
         this.problem = null;
         this.text = shown.text;
-        if (!this.gutterOn || this.wrap) {
-          if (this.code) this.code.set_value(shown.text);
-          else this.code = this.newCode(file, shown.text);
-        }
+        this.syncCodeState(file, shown.text);
       }
       this.readMarkdownImages(cx);
       this.renderMermaid(cx);
@@ -155,6 +166,16 @@ export const viewerMethods = {
         constant: t.ansi6,
       },
     });
+  },
+
+  // Retained editor state belongs to reads and events, never to render(). Turning wrap off can
+  // release its state because the selectable source view is replaced by the diff row view.
+  syncCodeState(file, value) {
+    if (this.gutterOn && !this.wrap && this.changesOn && this.hunks?.length) {
+      this.code?.release();
+      this.code = null;
+    } else if (this.code) this.code.set_value(value);
+    else this.code = this.newCode(file, value);
   },
 
   // What the pane's header row says, the same row a diff uses: file, folder, and whether
@@ -322,49 +343,125 @@ export const viewerMethods = {
       this.problem = null;
       return;
     }
-    if (this.readingImage) return;
-    this.imageShown = null;
+    if (this.readingImage || this.imageDrag) return;
+    const previousPath = this.imageFor;
+    this.imageFor = file.path;
+    if (previousPath !== file.path) {
+      this.imageShown = null;
+      this.imageFit = null;
+      this.imagePan = { x: 0, y: 0 };
+    }
     this.readingImage = true;
-    this.problem = null;
-    this.imageDoc = { phase: "loading" };
+    if (!this.imageShown) this.imageDoc = { phase: "loading" };
     cx.spawn(async (cx) => {
       const result = await this.imageLoader.load(file).catch((error) => ({ error: error.message }));
       this.readingImage = false;
       if (this.file?.path !== file.path) return;
-      this.problem = result.error ?? null;
-      this.imageShown = result.path ?? null;
-      this.imageDoc = result.error ? null : result;
-      cx.notify();
+      if (isSvg(file.path) && this.markdownView() === "code") return;
+      const changed = result.path !== this.imageShown || result.error !== this.problem;
+      if (changed) {
+        this.problem = result.error ?? null;
+        this.imageShown = result.path ?? null;
+        this.imageDoc = result.error ? null : result;
+        if (!result.path) this.imageFit = null;
+        cx.notify();
+      }
     });
   },
 
   imageView() {
     if (this.problem) return Message(this.problem);
     if (!this.imageShown) return Message(this.imageDoc?.error ?? this.imageDoc?.phase ?? "Loading…");
-    const { width, height } = this.imageDoc;
-    const room = Math.max(80, (this.imageViewport ?? width + 32) - 32);
-    const w = Math.round(Math.min(width, room) * this.imageZoom);
-    const h = Math.round(w * height / width);
-    return v_flex()
+    const imageDoc = this.imageDoc;
+    const viewport = this.imageViewport;
+    const fit = fittedScale(imageDoc, viewport);
+    if (this.imageFit !== fit) {
+      this.imageFit = fit;
+      this.imageScale = fit;
+      this.imagePan = { x: 0, y: 0 };
+    }
+    const w = Math.round(imageDoc.width * this.imageScale);
+    const h = Math.round(imageDoc.height * this.imageScale);
+    const pan = this.imagePan ?? { x: 0, y: 0 };
+    const picture = v_flex()
+      .id("viewer-image-canvas")
+      .size_full()
+      .relative()
+      .overflow_hidden()
+      .cursor_grab()
+      .on_scroll_wheel((event, cx) => {
+        const delta = event.delta_lines?.y ?? event.delta.y;
+        if (!delta) return;
+        this.zoomImage(delta < 0 ? 1 : -1, cx);
+      })
+      .on_pinch((event, cx) => {
+        if (!event.delta || !this.imageShown) return;
+        const current = this.imageScale ?? this.imageFit ?? 1;
+        this.imageScale = clamp(current * (1 + event.delta), MIN_ZOOM, MAX_ZOOM);
+        cx.stop_propagation();
+        cx.notify();
+      })
+      .on_mouse_down("left", (event, cx) => {
+        this.imageDrag = { at: event.position, pan: { ...pan } };
+        this.imageDragging = true;
+        cx.stop_propagation();
+        cx.notify();
+      })
+      .on_mouse_move((event, cx) => {
+        if (!this.imageDrag) return;
+        const drag = this.imageDrag;
+        this.imagePan = {
+          x: drag.pan.x + event.position.x - drag.at.x,
+          y: drag.pan.y + event.position.y - drag.at.y,
+        };
+        cx.notify();
+      })
+      .on_mouse_up("left", (_event, cx) => {
+        this.imageDrag = null;
+        this.imageDragging = false;
+        cx.notify();
+      })
+      .on_hover((hovered, cx) => {
+        if (hovered || !this.imageDrag) return;
+        this.imageDrag = null;
+        this.imageDragging = false;
+        cx.notify();
+      })
+      .child(
+        div()
+          .id("viewer-picture")
+          .absolute()
+          .left(((viewport?.width ?? w) - w) / 2 + pan.x)
+          .top(((viewport?.height ?? h) - h) / 2 + pan.y)
+          .w(w)
+          .h(h)
+          .when(this.imageDragging, (el) => el.cursor_grabbing())
+          .child(image(this.imageShown).w(w).h(h)),
+      );
+    return div()
       .id("viewer-image")
       .flex_1()
       .min_h(0)
       .min_w(0)
-      .overflow_scrollbar().mode("scrolling")
-      .px(16)
-      .py(16)
       .on_size_change((size, cx) => {
-        const width = Math.floor(size.width);
-        if (width === this.imageViewport) return;
-        this.imageViewport = width;
+        if (this.imageViewport?.width === size.width && this.imageViewport?.height === size.height) return;
+        this.imageViewport = size;
         cx.notify();
       })
-      .child(div().id("viewer-picture").flex_none().mx_auto().w(w).child(image(this.imageShown).w(w).h(h)));
+      .child(picture);
+  },
+
+  zoomImage(direction, cx) {
+    if (!this.imageShown) return;
+    const current = this.imageScale ?? this.imageFit ?? 1;
+    this.imageScale = clamp(current * (direction > 0 ? 1.25 : 0.8), MIN_ZOOM, MAX_ZOOM);
+    cx.stop_propagation();
+    cx.notify();
   },
 
   // Preview or Code, chosen per tab and kept in the registry, else the setting.
   markdownView() {
-    return this.viewerEntry()?.markdown ?? this.markdownDefault ?? "preview";
+    return this.viewerEntry()?.markdown ?? this.viewerMarkdown ?? this.markdownDefault ?? "preview";
   },
 
   showsPreview() {
@@ -490,23 +587,29 @@ export const viewerMethods = {
   viewerActions() {
     const t = theme();
     const file = this.file;
-    const editors = file?.on ? [] : foundEditors();
+    const editors = file?.on
+      ? foundEditors().filter((editor) => editor.bundle === "com.microsoft.VSCode")
+      : foundEditors();
     const markdown = Boolean(file && isMarkdown(file.path));
     const svg = Boolean(file && isSvg(file.path));
     const previewing = this.showsPreview();
     const coding = (!isImage(file?.path ?? "") && !previewing) || (svg && this.markdownView() === "code");
     const showView = (view) => (cx) => {
+      this.viewerMarkdown = view;
       this.setViewer(this.viewerId, { markdown: view });
+      if (svg && view === "code") this.imageShown = null;
       this.readFile(cx);
       cx.notify();
     };
     // Only changes that replaced something have old lines to show.
-    const openable = this.gutterOn && !previewing ? (this.hunks ?? []).filter((hunk) => hunk.old.length).map(hunkKey) : [];
+    const changed = this.gutterOn && !previewing && (this.hunks ?? []).length > 0;
+    const openable = changed && this.changesOn ? this.hunks.filter((hunk) => hunk.old.length).map(hunkKey) : [];
     const allOpen = openable.length > 0 && openable.every((key) => this.openHunks.has(key));
     return h_flex()
       .id("viewer-actions")
       .gap(6)
       .items_center()
+      .on_mouse_down("left", (_event, cx) => cx.stop_propagation())
       .when(svg, (el) =>
         el.child(
           h_flex()
@@ -517,16 +620,12 @@ export const viewerMethods = {
         ),
       )
       .when(isImage(file?.path ?? "") && this.imageShown !== null && this.markdownView() !== "code", (el) => {
-        const zoom = (step) => (cx) => {
-          const at = ZOOMS.indexOf(this.imageZoom);
-          this.imageZoom = ZOOMS[Math.max(0, Math.min(ZOOMS.length - 1, at + step))];
-          cx.notify();
-        };
+        const scale = this.imageScale ?? this.imageFit ?? 1;
         return el.child(
           h_flex().id("viewer-zoom").gap(2).items_center()
-            .child(TextButton({ id: "viewer-zoom-out", label: "−", disabled: this.imageZoom === ZOOMS[0], onClick: zoom(-1) }))
-            .child(div().min_w(38).text_center().text_color(t.dim).child(`${Math.round(this.imageZoom * 100)}%`))
-            .child(TextButton({ id: "viewer-zoom-in", label: "+", disabled: this.imageZoom === ZOOMS.at(-1), onClick: zoom(1) })),
+            .child(TextButton({ id: "viewer-zoom-out", label: "−", disabled: scale <= MIN_ZOOM, onClick: (cx) => this.zoomImage(-1, cx) }))
+            .child(div().min_w(44).text_center().text_color(t.dim).child(`${Math.round(scale * 100)}%`))
+            .child(TextButton({ id: "viewer-zoom-in", label: "+", disabled: scale >= MAX_ZOOM, onClick: (cx) => this.zoomImage(1, cx) })),
         );
       })
       .when(markdown, (el) =>
@@ -551,6 +650,28 @@ export const viewerMethods = {
           }),
         ),
       )
+      .when(changed, (el) => el.child(TextButton({
+        id: "viewer-changes",
+        label: "Changes",
+        active: this.changesOn,
+        onClick: (cx) => {
+          this.changesOn = !this.changesOn;
+          if (this.text !== undefined) this.syncCodeState(file, this.text);
+          cx.notify();
+        },
+      })))
+      .when(coding, (el) => el.child(TextButton({
+        id: "viewer-wrap",
+        label: "Wrap",
+        active: this.wrap,
+        onClick: (cx) => {
+          this.wrap = !this.wrap;
+          setShared("xmux-files.wrap", this.wrap);
+          if (this.text !== undefined) this.syncCodeState(this.file, this.text);
+          cx.notify();
+        },
+      })))
+      // Opening elsewhere is the final action in every preview, including remote VS Code.
       .when(editors.length > 0, (el) =>
         el.child(
           this.chooser({
@@ -560,24 +681,13 @@ export const viewerMethods = {
             trigger: MenuButton({ id: "viewer-open-in-trigger", label: "Open in" }),
             choices: editors.map((e) => ({ id: e.bundle, label: e.name })),
             onChoose: (bundle) => {
-              this.openInEditor(editors.find((e) => e.bundle === bundle), file.path);
+              if (bundle === "com.microsoft.VSCode")
+                this.openInVsCode(file).catch((error) => setShared("xmux-files.error", `Could not open ${file.path} in VS Code: ${error.message}`));
+              else this.openInEditor(editors.find((e) => e.bundle === bundle), file.path);
             },
           }),
         ),
-      )
-      .when(coding, (el) => el.child(TextButton({
-        id: "viewer-wrap",
-        label: "Wrap",
-        active: this.wrap,
-        onClick: (cx) => {
-          this.wrap = !this.wrap;
-          setShared("xmux-files.wrap", this.wrap);
-          this.code?.release();
-          this.code = null;
-          if (this.text !== undefined && (!this.gutterOn || this.wrap)) this.code = this.newCode(this.file, this.text);
-          cx.notify();
-        },
-      })));
+      );
   },
 
   viewerView() {
@@ -618,8 +728,8 @@ export const viewerMethods = {
     else if (this.problem) root.child(Message(this.problem));
     else if (this.text === undefined) root.child(Message(head ? "Loading…" : "This tab has no file."));
     else if (this.showsPreview()) root.child(this.previewView());
-    else if (this.gutterOn && !this.wrap) root.child(this.linesView());
-    else if (this.gutterOn && this.wrap && !this.code) root.child(Editor.new(this.code = this.newCode(this.file, this.text)).flex_1().min_h(0));
+    else if (this.gutterOn && !this.wrap && this.changesOn && this.hunks?.length) root.child(this.linesView());
+    else if (!this.code) root.child(Message(head ? "Loading…" : "This tab has no file."));
     else root.child(v_flex().flex_1().min_h(0).child(Editor.new(this.code).flex_1().min_h(0)));
     // There's no row of its own to sit in, so the actions float over the file's corner.
     // On the file's own colour, nearly opaque, so the text under it fades out without a box.

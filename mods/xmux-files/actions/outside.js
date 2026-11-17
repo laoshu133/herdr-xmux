@@ -5,6 +5,7 @@ import { EDITORS } from "../files/model.js";
 
 const FOUND = "xmux-files.editors";
 const ERROR = "xmux-files.error";
+const APPS = "xmux-files.editor-paths";
 const VSCODE = "com.microsoft.VSCode";
 
 export const foundEditors = () => shared(FOUND) ?? [];
@@ -23,15 +24,19 @@ export const outsideMethods = {
   findEditors(cx, extra = []) {
     if (window()?.platform === "windows") return;
     cx.spawn(async (cx) => {
-      const found = [];
+      const found = [], paths = {};
       for (const editor of [...EDITORS, ...extra]) {
         const r = await exec(
           "mdfind",
           [`kMDItemCFBundleIdentifier == '${String(editor.bundle).replace(/'/g, "")}'`],
           {},
         ).catch(() => null);
-        if (r?.code === 0 && r.stdout.trim()) found.push(editor);
+        if (r?.code === 0 && r.stdout.trim()) {
+          found.push(editor);
+          paths[editor.bundle] = r.stdout.trim().split("\n")[0];
+        }
       }
+      setShared(APPS, paths);
       setShared(FOUND, found);
       cx.notify();
     });
@@ -71,19 +76,34 @@ export const outsideMethods = {
 
   async openRemoteVsCode(path, on) {
     try {
-      const result = await hc(["machine", "ls", "--json"]);
-      if (result.code !== 0) throw new Error(result.stderr || "Could not read Herdr machines.");
-      const machine = JSON.parse(result.stdout).machines?.find((entry) => entry.name === on);
-      if (!machine || machine.via || !machine.target) {
-        throw new Error(`No SSH target is configured for ${on}.`);
-      }
+      const target = await this.remoteVsCodeTarget(on);
       await this.outside(
-        ["-b", VSCODE, remoteVsCodeUri(machine.target, path)],
+        ["-b", VSCODE, remoteVsCodeUri(target, path)],
         `open ${on} in VS Code`,
       );
     } catch (error) {
       setShared(ERROR, `Could not open ${on} in VS Code: ${error.message}`);
     }
+  },
+
+  // Reuse the Files panel's space folder as the workspace, then reveal the file in that window.
+  // This is shared by the tree and viewer, locally and over the machine's configured SSH target.
+  async openInVsCode(file) {
+    const folder = file.root || file.path.slice(0, -file.path.split("/").pop().length - 1) || "/";
+    const target = file.on ? await this.remoteVsCodeTarget(file.on) : null;
+    const args = target ? ["--remote", `ssh-remote+${target}`] : ["--reuse-window"];
+    const app = shared(APPS)?.[VSCODE] ?? "/Applications/Visual Studio Code.app";
+    const cli = `${app}/Contents/Resources/app/bin/code`;
+    const result = await exec(cli, [...args, folder, file.path], {}).catch((error) => ({ code: 1, stderr: error.message }));
+    setShared(ERROR, result.code === 0 ? null : `Could not open ${file.path} in VS Code: ${result.stderr?.trim() || "it failed"}`);
+  },
+
+  async remoteVsCodeTarget(on) {
+    const result = await hc(["machine", "ls", "--json"]);
+    if (result.code !== 0) throw new Error(result.stderr || "Could not read Herdr machines.");
+    const machine = JSON.parse(result.stdout).machines?.find((entry) => entry.name === on);
+    if (!machine || machine.via || !machine.target) throw new Error(`No SSH target is configured for ${on}.`);
+    return machine.target;
   },
 
   openInEditor(editor, path) {

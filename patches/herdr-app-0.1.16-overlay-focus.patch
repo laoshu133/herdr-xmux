@@ -1,0 +1,152 @@
+diff --git a/defaults/AGENTS.md b/defaults/AGENTS.md
+index b8cb4c2..b3edc92 100644
+--- a/defaults/AGENTS.md
++++ b/defaults/AGENTS.md
+@@ -607,8 +607,10 @@ The main ones:
+   `pane.swap {target}` trades the places of `pane` (default: the focused one) and
+   `target`, another pane of the same tab; give `direction` or `target`, not both.
+   A swap moves panes, not focus: the focused pane stays focused in its new place.
+-  `pane.focus {terminal}` prefers the first visible layout terminal block showing that
+-  address, then its model pane. Clicking a terminal block focuses it too.
++  `pane.focus {terminal}` prefers the frontmost overlay's visible terminal block,
++  then the first visible layout terminal block, then its model pane. Focusing an
++  overlay leaves the tab underneath selected and respects modal keyboard barriers.
++  Clicking a terminal block focuses it too.
+   While a layout terminal block is focused, implicit split/close/zoom/go/swap and
+   `terminal.show` fail, as do `terminal.open`/`terminal.keep` with place right/down.
+   They never act on the terminal's source pane. An explicit `pane` still targets that
+diff --git a/defaults/herdr.d.ts b/defaults/herdr.d.ts
+index 1921bb7..ae099a8 100644
+--- a/defaults/herdr.d.ts
++++ b/defaults/herdr.d.ts
+@@ -262,7 +262,9 @@ export interface TerminalSelectionState {
+  *  A terminal in a window (openOverlay with a layout) that has the keyboard is reported
+  *  the same way (`pane` and `shown` null); implicit pane commands still act on the
+  *  focused pane under the window.
+- *  pane.focus {terminal} prefers the first visible layout terminal block, then a model pane.
++ *  pane.focus {terminal} prefers the frontmost visible overlay terminal, then the first
++ *  visible layout terminal block, then a model pane. Overlay focus leaves the underlying
++ *  tab selected and does not take the keyboard from a modal overlay above it.
+  *  `shown`: terminal.show replacement, if any. `agent`: the agent an agent block shows.
+  *  `terminal` is null for mod panes. Selection describes the terminal that receives
+  *  terminal commands (including a shown replacement or peek). Live. */
+diff --git a/src/SKILL.md b/src/SKILL.md
+index 9e940ff..2b9a2ae 100644
+--- a/src/SKILL.md
++++ b/src/SKILL.md
+@@ -47,6 +47,10 @@ herdr-app do pane.split --direction right --pane p12
+ herdr-app do agent.focus --terminal t7
+ ```
+ 
++`pane.focus --terminal t7` can also focus a visible floating-window terminal
++without selecting a different tab. The frontmost matching overlay takes priority;
++a modal overlay above it keeps the keyboard.
++
+ For a remote space:
+ 
+ ```sh
+diff --git a/src/window.rs b/src/window.rs
+index 41c07e8..bbdd53b 100644
+--- a/src/window.rs
++++ b/src/window.rs
+@@ -3165,6 +3165,25 @@ impl AppWindow {
+                 }
+             }
+             "pane.focus" => {
++                // Overlay terminals have no model pane. Prefer the frontmost
++                // visible copy without changing the tab underneath it. A modal
++                // overlay remains a keyboard barrier for windows behind it.
++                if Self::arg(a, "pane").is_none()
++                    && let Some(terminal) = Self::arg(a, "terminal")
++                {
++                    let first = self.overlays.iter().rposition(|o| o.kind.modal_keys()).unwrap_or(0);
++                    let block = self.overlays[first..].iter().rev().filter_map(|o| o.layout.as_ref())
++                        .find_map(|l| l.visible_blocks().into_iter().find(|n| n.terminal() == Some(terminal)))
++                        .map(|n| n.id.clone());
++                    if let Some(id) = block && let Some(t) = self.terms.get(&id) {
++                        t.focus.focus(window, cx);
++                        self.focused_block = None;
++                        self.window_terminal = Some(id);
++                        self.publish(cx);
++                        cx.notify();
++                        return;
++                    }
++                }
+                 if Self::arg(a, "pane").is_none()
+                     && let Some(terminal) = Self::arg(a, "terminal")
+                     && let Some(block) = self.chrome.visible_blocks().into_iter().find(|n| n.terminal() == Some(terminal))
+@@ -7052,6 +7071,74 @@ export default class SystemToast extends View {
+         }
+     }
+ 
++    #[test]
++    fn pane_focus_reaches_floating_terminals_without_changing_tabs() {
++        in_own_process("overlay_terminal_command_focus");
++    }
++
++    #[gpui::test]
++    fn overlay_terminal_command_focus(cx: &mut gpui::TestAppContext) {
++        use serde_json::json;
++        if !running_alone("overlay_terminal_command_focus") { return; }
++        let (view, cx) = open_window(cx, "unused", "", json!({
++            "id": "root", "type": "row", "children": [
++                {"id": "chrome-term", "type": "block", "content": {"terminal": "t2"}},
++                {"id": "tab", "type": "block", "content": {"tab": "active"}}
++            ]
++        }));
++        let spec = json!({"kind": "window", "width": 0.7, "height": 0.6, "layout": {
++            "type": "column", "children": [
++                {"id": "hidden", "type": "block", "hidden": true, "content": {"terminal": "t3"}},
++                {"id": "shell", "type": "block", "content": {"terminal": "t2"}}
++            ]
++        }});
++        view.update_in(cx, |this, window, cx| {
++            this.model.add_space("s1", "one", "", super::Tab::new("a", "a", "pa", "t1"));
++            for address in ["t1", "t2", "t3"] {
++                this.live.insert(address.into(), json!({"address": address}));
++            }
++            this.sync(window, cx);
++            this.open_overlay("older".into(), spec.clone(), window, cx);
++            this.open_overlay("front".into(), spec.clone(), window, cx);
++        });
++        cx.run_until_parked();
++        let focus = |this: &mut super::AppWindow, window: &mut gpui::Window, cx: &mut gpui::Context<super::AppWindow>| {
++            let result = this.run_as("pane.focus", json!({"terminal": "t2"}), false, window, cx);
++            assert!(result.get("error").is_none(), "{result}");
++        };
++        view.update_in(cx, |this, window, cx| focus(this, window, cx));
++        cx.run_until_parked();
++        view.update_in(cx, |this, window, cx| {
++            let block = this.overlays.iter().find(|o| o.id == "front").unwrap().layout.as_ref().unwrap()
++                .visible_blocks().into_iter().find(|n| n.terminal() == Some("t2")).unwrap().id.clone();
++            assert!(this.terms[&block].focus.is_focused(window));
++            assert!(!this.terms["chrome-term"].focus.is_focused(window));
++            assert_eq!(this.model.focused_pane().as_deref(), Some("pa"));
++            assert_eq!(this.model.active_tab().unwrap().id, "a");
++            assert_eq!(this.window_terminal.as_deref(), Some(block.as_str()));
++            let hidden = this.run_as("pane.focus", json!({"terminal": "t3"}), false, window, cx);
++            assert!(hidden.get("error").is_some(), "hidden terminal must not be focused");
++            this.open_overlay("modal".into(), json!({"kind": "dialog", "mod": "unused"}), window, cx);
++        });
++        cx.run_until_parked();
++        view.update_in(cx, |this, window, cx| {
++            focus(this, window, cx);
++            assert!(this.overlays.iter().find(|o| o.id == "modal").unwrap().focus.is_focused(window));
++            this.close_overlay("modal", window, cx);
++            this.close_overlay("front", window, cx);
++            this.close_overlay("older", window, cx);
++            this.open_overlay("reopened".into(), spec, window, cx);
++        });
++        cx.run_until_parked();
++        view.update_in(cx, |this, window, cx| focus(this, window, cx));
++        cx.run_until_parked();
++        view.update_in(cx, |this, window, _cx| {
++            let block = super::overlay_terminal_block(&this.overlays, this.window_terminal.as_deref()).unwrap();
++            assert!(this.terms[&block.id].focus.is_focused(window));
++            assert_eq!(this.model.focused_pane().as_deref(), Some("pa"));
++        });
++    }
++
+     #[test]
+     fn pane_swap_refuses_a_direction_that_is_not_a_string() {
+         use serde_json::json;

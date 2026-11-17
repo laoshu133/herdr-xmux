@@ -16,6 +16,8 @@ Changes, PRs, and Issues panels.
   terminal and agent picker. `Cmd+Ctrl+T` opens the same picker.
 - `Cmd+Shift+T` starts a fresh terminal in the most recently closed tab's
   directory, at its previous position. It does not resume the old process.
+- `` Cmd+` `` toggles a draggable local terminal over XMux. Hiding keeps the
+  shell running; closing it or exiting the shell removes the window.
 - Files, Changes, PRs, and Issues panels with repository-aware actions.
 - One-pixel pane frames, split spacing, focus treatment, and continuous shell
   boundaries.
@@ -36,6 +38,7 @@ Changes, PRs, and Issues panels.
 | `mods/xmux-branch-pr` | Pull request workflow. |
 | `mods/xmux-branch-issue` | Issue workflow. |
 | `mods/xmux-new-menu` | Terminal and agent creation menu. |
+| `mods/xmux-quick-dialog` | Floating local terminal title bar and controls. |
 | `mods/xmux-status` | Bottom status bar and XMux commands. |
 
 Herdr supplies the remaining workspace pieces, including its built-in status
@@ -76,6 +79,7 @@ herdr-app do layout.switch '{"name":"XMux"}'
 
 ```sh
 python3 -m json.tool layouts/XMux.json >/dev/null
+node --test tests/quick-dialog.test.mjs
 find mods -path '*/xmux-*/*.js' -type f -print0 | xargs -0 -n1 node --check
 for mod in mods/xmux-*; do herdr-app check "$mod"; done
 herdr-app status
@@ -94,7 +98,22 @@ cmd-ctrl-down    -> xmux-status.cross-tab-next
 cmd-ctrl-t       -> xmux-tabs.new-menu
 cmd-shift-t      -> xmux-status.reopen-closed
 cmd-r (terminal) -> send form feed, matching Ghostty
+cmd-` (XMux)     -> xmux-status.quick-dialog
+cmd-w (XMux)     -> xmux-status.close-current
 ```
+
+The XMux bindings belong in a `layout:XMux` section. `close-current` closes
+the quick terminal when it has keyboard focus, otherwise the current tab.
+The terminal starts in the focused local terminal's directory, or the local
+home directory when working remotely. Drag its title bar to move it; its
+position is remembered. Switching layouts hides it; returning to XMux and
+toggling it reuses the shell. App restarts also reuse a still-running shell.
+Opening or reopening quietly attempts `pane.focus` through the local
+`herdr-app` control CLI. Clients that support overlay terminal focus do so
+automatically; otherwise click the terminal to type. Unsupported commands or
+a missing CLI leave the draggable window usable without an error toast.
+Each opening retries, so future Herdr support takes effect automatically.
+The optional [overlay focus patch](patches/README.md) adds support to 0.1.16.
 
 The current personal setup also uses `ghostty-solarized-dark` and disables
 Herdr's terminal pane scrollbar thumb with `pane_scrollbars: false`; XMux

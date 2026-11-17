@@ -22518,7 +22518,9 @@ declare module "herdr" {
    *  A terminal in a window (openOverlay with a layout) that has the keyboard is reported
    *  the same way (`pane` and `shown` null); implicit pane commands still act on the
    *  focused pane under the window.
-   *  pane.focus {terminal} prefers the first visible layout terminal block, then a model pane.
+   *  pane.focus {terminal} prefers the frontmost visible overlay terminal, then the first
+   *  visible layout terminal block, then a model pane. Overlay focus leaves the underlying
+   *  tab selected and does not take the keyboard from a modal overlay above it.
    *  `shown`: terminal.show replacement, if any. `agent`: the agent an agent block shows.
    *  `terminal` is null for mod panes. Selection describes the terminal that receives
    *  terminal commands (including a shown replacement or peek). Live. */

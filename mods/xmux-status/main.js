@@ -2,17 +2,22 @@ import { View, div, svg } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { spaces, agents, focused, theme, run, window, keys, nextCommand } from "herdr";
 import { ReopenTab } from "./reopen.js";
+import { QuickDialog } from "./quick-dialog.js";
 
 export default class WorkspaceStatus extends View {
   init(_props, cx) {
     this.reopenTab = new ReopenTab();
     this.reopenTab.init(cx);
-    cx.spawn(async () => {
+    this.quickDialog = new QuickDialog();
+    this.quickDialog.init();
+    cx.spawn(async (cx) => {
       for (;;) {
         const command = await nextCommand();
         if (command === "cross-tab-next") this.crossTab(1);
         else if (command === "cross-tab-prev") this.crossTab(-1);
         else if (command === "reopen-closed") this.reopenTab.reopen();
+        else if (command === "quick-dialog") cx.spawn(async () => this.quickDialog.toggle());
+        else if (command === "close-current") this.quickDialog.closeCurrent();
       }
     });
   }
