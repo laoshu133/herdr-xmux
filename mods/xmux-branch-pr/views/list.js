@@ -114,7 +114,7 @@ export const listMethods = {
 
   listHeader() {
     const more = Object.keys(this.cursors).length > 0 ? "+" : "";
-    const header = PanelHeader()
+    return PanelHeader()
       .child(
         h_flex()
           .flex_1()
@@ -147,15 +147,6 @@ export const listMethods = {
           ),
       )
       .child(this.refreshButton());
-    const branchProviders = this.view === "branch" && !this.pr ? [...new Map(this.branchPRs.map(p => [`${p.provider.kind}:${p.provider.host}`, p.provider])).values()] : [];
-    const provider = this.pr?.provider ?? (branchProviders.length === 1 ? branchProviders[0] : this.provider);
-    return v_flex().flex_none().child(
-      h_flex().px(14).pt(8).gap(6).items_center()
-        .child(Icon(providerIcon(provider)))
-        .child(div().flex_none().text_size(TEXT.small).font_medium().child(branchProviders.length > 1 ? "Pull / Merge Requests" : provider?.kind === "gitlab" ? "Merge Requests" : "Pull Requests"))
-        .child(div().flex_1().min_w(0).truncate().text_size(TEXT.caption).text_color(theme().dim)
-          .tooltip(`${provider?.host || ""}/${this.pr?.repository || this.repo}`).child(branchProviders.length > 1 ? "Multiple repositories" : provider?.host ? `${provider.host}/${this.pr?.repository || this.repo}` : ""))
-    ).child(header);
   },
 
   filters() {
@@ -394,9 +385,25 @@ export const listMethods = {
 
   footer() {
     const t = theme();
+    const selected = this.pr ?? this.pendingPR;
+    const records = selected ? [selected] : this.view === "branch" ? this.branchPRs : [];
+    const repositories = [...new Map(records.map(p => [
+      JSON.stringify([p.provider?.kind, p.provider?.host, p.repository]), p,
+    ])).values()];
+    const provider = selected?.provider ?? repositories[0]?.provider ?? this.provider;
+    const mixed = new Set(repositories.map(p => p.provider?.kind)).size > 1;
+    const name = mixed ? "Pull / Merge Requests" : provider?.kind === "gitlab" ? "Merge Requests" : "Pull Requests";
+    const repo = repositories.length > 1 ? "Multiple repositories" : selected?.repository ?? repositories[0]?.repository ?? this.repo;
+    const addresses = repositories.length
+      ? repositories.map(p => `${p.provider?.host || ""}/${p.repository}`).join("\n")
+      : this.repo ? `${provider?.host || ""}/${this.repo}` : "";
+    const branch = this.pr?.headRefName || this.branch;
+    const count = !selected && this.view === "all" && this.listLoaded
+      ? `${this.items.length} loaded${this.total != null ? ` / ${this.total}` : ""}` : "";
+    const context = [branch || (this.repoLoading ? "Finding repository…" : "No branch"), count].filter(Boolean).join(" · ");
     return h_flex()
       .id("pr-footer")
-      .h(34)
+      .h(46)
       .flex_none()
       .px(14)
       .gap(8)
@@ -405,19 +412,24 @@ export const listMethods = {
       .border_color(t.border)
       .text_size(TEXT.caption)
       .text_color(t.dim)
+      .child(div().flex_none().tooltip(name).child(Icon(mixed ? "pull-request" : providerIcon(provider))))
       .child(
-        div()
+        v_flex()
           .flex_1()
           .min_w(0)
-          .truncate()
-          .tooltip(this.repo ? `${this.provider?.host}/${this.repo}` : "")
-          .child(this.view === "all" && this.listLoaded ? `${this.items.length} loaded${this.total !== null && this.total !== undefined ? ` / ${this.total}` : ""}` : this.branch || (this.repoLoading ? "Finding repository…" : "No repository")),
-      )
-      .child(
-        div()
-          .flex_none()
-          .tooltip(this.lastUpdated ? new Date(this.lastUpdated).toLocaleString() : "")
-          .child(this.busy ? "Updating…" : this.updatedLabel()),
+          .gap(2)
+          .child(
+            h_flex().gap(6).min_w(0).items_center()
+              .child(div().flex_none().font_medium().child(name))
+              .child(div().flex_1().min_w(0).truncate().tooltip(addresses).child(repo || "No repository")),
+          )
+          .child(
+            h_flex().gap(8).min_w(0).items_center()
+              .child(div().flex_1().min_w(0).truncate().tooltip(context).child(context))
+              .child(div().flex_none()
+                .tooltip(this.lastUpdated ? new Date(this.lastUpdated).toLocaleString() : "")
+                .child(this.busy ? "Updating…" : this.updatedLabel())),
+          ),
       );
   },
 };
