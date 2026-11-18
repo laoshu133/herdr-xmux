@@ -1,6 +1,7 @@
 import { View, div, svg } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { closeOverlay, focused, panes, props, run, setShared, shared, terminals, theme } from "herdr";
+import { floatingTerminalTitle } from "./shared/tab-title.js";
 
 const STATE = "xmux.quick-dialog";
 
@@ -37,13 +38,16 @@ export default class QuickDialogTitlebar extends View {
 
   render() {
     const t = theme();
-    const terminal = terminals().find(entry => entry.address === props()?.terminal);
+    const address = props()?.terminal;
+    const terminal = terminals().find(entry => entry.address === address);
+    const title = floatingTerminalTitle(terminal);
     const folder = terminal?.foreground?.cwd || terminal?.cwd || "";
     return h_flex().id("quick-dialog-titlebar").size_full().px(8).gap(8).items_center().bg(t.chrome)
       .border_b(1).border_color(t.border).text_size(12).text_color(t.foreground)
-      .child(svg("icons/shell.svg").size(14).text_color(t.muted))
-      .child(div().flex_none().child("Local terminal"))
-      .child(div().flex_1().truncate().text_color(t.dim).child(folder))
+      .child(svg("icons/shell.svg").size(14).flex_none().text_color(t.muted))
+      .child(h_flex().min_w(0).flex_1().gap(8).items_center()
+        .child(div().min_w(0).truncate().tooltip(title).child(title))
+        .when(Boolean(folder), el => el.child(div().min_w(0).truncate().text_color(t.dim).tooltip(folder).child(folder))))
       .child(this.button(t, "quick-dialog-hide", "−", "Hide terminal (⌘`)", () => this.dismiss(false)))
       .child(this.button(t, "quick-dialog-close", "×", "Close terminal", () => this.dismiss(true)));
   }

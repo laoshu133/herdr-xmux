@@ -11,7 +11,7 @@ const targets = {
   "context.js": ["xmux-status", "xmux-tabs", "xmux-sidebar", "xmux-new-menu", "xmux-changes", "xmux-branch-pr", "xmux-branch-issue"],
   "query-cache.js": ["xmux-changes", "xmux-branch-pr", "xmux-branch-issue", "xmux-sidebar"],
   "code-viewer.js": ["xmux-files", "xmux-changes"],
-  "tab-title.js": ["xmux-tabs", "xmux-sidebar"],
+  "tab-title.js": ["xmux-tabs", "xmux-sidebar", "xmux-quick-dialog"],
   "file-menu.js": ["xmux-files", "xmux-changes", "xmux-branch-pr"],
 };
 for (const [file, mods] of Object.entries(targets)) {
