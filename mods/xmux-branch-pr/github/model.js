@@ -1,6 +1,5 @@
 // What GitHub/GitLab answers mean, as plain functions: no Herdr, no drawing.
-import { requestNumber, requestShort, requestName } from "./provider.js";
-import { remoteInfo } from "./provider.js";
+import { providerUrl, remoteInfo, requestNumber, requestShort, requestName } from "./provider.js";
 const pad = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 export { providerFromRemote, resolveProvider, providerName, providerUrl, providerProblem, providerIcon, requestNumber, requestShort, requestName, requestKey } from "./provider.js";

@@ -393,15 +393,17 @@ export const listMethods = {
     const provider = selected?.provider ?? repositories[0]?.provider ?? this.provider;
     const mixed = new Set(repositories.map(p => p.provider?.kind)).size > 1;
     const repo = selected?.repository ?? repositories[0]?.repository ?? this.repo;
-    const address = repositories.length > 1 ? "Multiple repositories" : repo ? `${provider?.host ? `${provider.host}/` : ""}${repo}` : "No repository";
+    const multiple = repositories.length > 1;
+    const url = !multiple && repo && provider ? repoUrl(repo, provider) : null;
+    const repoLabel = multiple ? "Multiple repositories" : repo || "No repository";
     const addresses = repositories.length
-      ? repositories.map(p => `${p.provider?.host || ""}/${p.repository}`).join("\n")
-      : this.repo ? `${provider?.host || ""}/${this.repo}` : "";
+      ? repositories.map(p => p.provider ? repoUrl(p.repository, p.provider) : p.repository).join("\n")
+      : url;
     const branch = this.pr?.headRefName || this.branch;
+    const label = branch ? `${repoLabel}:${branch}` : repoLabel;
     const count = !selected && this.view === "all" && this.listLoaded
       ? `${this.items.length} loaded${this.total != null ? ` / ${this.total}` : ""}` : "";
-    const branchLabel = branch || (this.branchLoading ? "Finding branch…" : "No branch");
-    const context = [addresses, branchLabel, count].filter(Boolean).join("\n");
+    const context = [label, addresses, count].filter(Boolean).join("\n");
     return h_flex()
       .id("pr-footer")
       .h(30)
@@ -413,10 +415,13 @@ export const listMethods = {
       .border_color(t.border)
       .text_size(TEXT.caption)
       .text_color(t.dim)
-      .child(div().flex_none().tooltip(addresses).child(Icon(mixed ? "pull-request" : providerIcon(provider))))
-      .child(div().flex_1().min_w(0).truncate().tooltip(context).child(address))
-      .child(div().flex_none().child("·"))
-      .child(div().min_w(0).max_w(100).truncate().tooltip(branchLabel).child(branchLabel))
+      .child(Icon(mixed ? "pull-request" : providerIcon(provider)))
+      .child(div().flex_1().min_w(0).truncate().tooltip(context).child(label)
+        .when(Boolean(url), el => el
+          .role("link")
+          .cursor_pointer()
+          .hover(style => style.text_color(t.accent))
+          .on_click((_e, cx) => cx.open_url(url))))
       .child(div().flex_none()
         .tooltip(this.lastUpdated ? `${this.updatedLabel()} · ${new Date(this.lastUpdated).toLocaleString()}` : "Not updated yet")
         .child(this.busy ? "Updating…" : this.lastUpdated ? timeAgo(new Date(this.lastUpdated).toISOString()) : "–"));
