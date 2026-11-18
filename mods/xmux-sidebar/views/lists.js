@@ -5,7 +5,7 @@ import { v_flex, h_flex } from "gpui-base";
 import { agents, focused, nextCommand, theme, setAgentOrder, setShared } from "herdr";
 import { Spaces } from "./spaces.js";
 import { Agents } from "./agents.js";
-import { TEXT, Badge, Rail } from "./ui.js";
+import { TEXT, Badge, IconButton, Rail } from "./ui.js";
 
 const TABS = ["spaces", "agents"];
 
@@ -50,7 +50,7 @@ export class Lists {
     this.spaces.above = null;
     const view = this.agents.readView(cx);
     const navigation = {
-      tab: this.spaces.settings.combined ? this.tab : "spaces",
+      tab: this.spaces.settings.combined || collapsed ? this.tab : "spaces",
       order: view.list.map((agent) => agent.address),
     };
     const signature = JSON.stringify(navigation);
@@ -60,8 +60,20 @@ export class Lists {
         if (this.navigationSignature === signature) setShared("xmux-sidebar.navigation", navigation);
       });
     }
-    // The rail has no room for tabs: both lists, as numbers.
-    if (!this.spaces.settings.combined || collapsed)
+    if (collapsed) {
+      root.child(v_flex().id("sidebar-rail-tabs").items_center().gap(4).py(4).flex_none()
+        .border_b(1).border_color(t.border)
+        .children([
+          { id: "spaces", icon: "layers", label: "Spaces" },
+          { id: "agents", icon: "agent", label: "Agents" },
+        ].map(({ id, icon, label }) => IconButton({
+          id: `rail-${id}`, icon, label, muted: this.tab !== id, onClick: (cx) => this.pick(id, cx),
+        }).when(this.tab === id, (el) => el.bg(t.selected)))));
+      if (this.tab === "agents") return root.child(this.agents.render(cx, { view, heading: false, expand: false }));
+      return root.child(this.spaces.body(t, true));
+    }
+
+    if (!this.spaces.settings.combined)
       return root
         .child(
           v_flex()

@@ -8,6 +8,42 @@ async function moduleAt(path, names, deps = {}, clock = Date) {
   return new Function("deps", "Date", `const { ${Object.keys(deps).join(",")} } = deps;\n${source}\nreturn {${names.join(",")}};`)(deps, clock);
 }
 
+test("the tab bar reserves only the space still occupied by macOS controls", async () => {
+  const { tabBarInset } = await moduleAt("../mods/xmux-tabs/views/tab-bar.js", ["tabBarInset"]);
+  const sidebar = { id: "sidebar", size: { px: 48 } };
+  const layout = { traffic_lights: [12, 11], children: [sidebar] };
+  const window = { platform: "macos", titlebar: "none", fullscreen: false };
+  assert.equal(tabBarInset(layout, window), 28);
+  assert.equal(tabBarInset(layout, window, 0.8), 47);
+  sidebar.hidden = true;
+  assert.equal(tabBarInset(layout, window), 76);
+  assert.equal(tabBarInset(layout, { ...window, fullscreen: true }), 0);
+  assert.equal(tabBarInset(layout, { ...window, platform: "linux" }), 0);
+});
+
+test("Go to searches machine-qualified spaces and focuses the matched split Agent", async () => {
+  const program = { name: "Codex", key: "codex", agent: true };
+  const first = { pane: "p1", tab: "t", terminal: "m5/t1", program, title: "Review docs | XMux" };
+  const second = { pane: "p2", tab: "t", terminal: "m5/t2", program, title: "Fix split shortcuts | XMux" };
+  const agents = [first, second].map((pane) => ({ ...pane, address: pane.terminal, status: "working" }));
+  const spaces = [{ id: "s", name: "herdr-xmux", machine: "m5", status: "working",
+    tabs: [{ id: "t", name: "1", active: true }] }];
+  const commands = [];
+  const titles = await moduleAt("../lib/xmux/tab-title.js", ["automaticTabTitle", "tabLead"], { terminals: () => [] });
+  const { Picker } = await moduleAt("../mods/xmux-picker/main.js", ["Picker"], {
+    ...titles, View: class {}, spaces: () => spaces, panes: () => [first, second], focused: () => first,
+    agents: () => agents, terminals: () => [], shared: () => null, run: (...args) => commands.push(args),
+  });
+  const picker = new Picker();
+  Object.assign(picker, { filter: "m5/herdr-xmux", localHost: "Mi-M2", machines: [], close() {} });
+  const matching = picker.rows().filter((row) => row.kind === "head" || row.kind === "ctx");
+  assert.deepEqual(matching.map((row) => row.title ?? row.label), ["m5/herdr-xmux", "Review docs", "Fix split shortcuts"]);
+  picker.filter = "split shortcuts";
+  const [target] = picker.rows().filter((row) => row.kind === "ctx");
+  picker.go(target);
+  assert.deepEqual(commands, [["pane.focus", { pane: "p2" }]]);
+});
+
 test("sidebar mode routes the navigation keys to workspace tabs or native Agent order", async () => {
   let tab = "spaces";
   const calls = [];

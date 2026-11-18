@@ -15,28 +15,12 @@ import {
   shared,
   setShared,
   setAgentOrder,
-  window,
-  layout,
 } from "herdr";
-import { findNode } from "./find-node.js";
 import { TEXT, Icon, IconButton, GroupHeader, Menu, MenuLabel, MenuOption } from "./ui.js";
 import { scrollingScrollbar } from "./scrollbar.js";
 import { automaticTabTitle, tabLead } from "./tab-title.js";
 
-// The sidebar's rail goes by its width, not a flag: dragging its edge narrows it too.
-const narrow = () => (findNode(layout(), "sidebar")?.size?.px ?? Infinity) < 160;
-
-// To the rail (on macOS wide enough for the traffic lights), or back to the width it had.
-function toggleSidebar() {
-  const width = findNode(layout(), "sidebar")?.size?.px;
-  if (!narrow()) setShared("sidebar.width", width);
-  // Mods edited before the rail went by width still read the flag.
-  setShared("sidebar.collapsed", !narrow());
-  run("layout.resize", {
-    id: "sidebar",
-    px: narrow() ? (shared("sidebar.width") ?? 268) : window()?.platform === "macos" ? 76 : 44,
-  });
-}
+import { narrow, toggleSidebar } from "./chrome.js";
 
 const clean = (s) => (s ?? "").replace(/^[^\p{L}\p{N}]+/u, "").trim();
 
@@ -416,7 +400,7 @@ export class Agents {
       .id("ag-list")
       .flex_1()
       .min_h(0)
-      .px(view.collapsed ? 0 : 8)
+      .px(view.collapsed ? 4 : 8)
       .overflow_y_scroll()
       .children(rows);
     return v_flex()
@@ -429,7 +413,7 @@ export class Agents {
       .when(!view.collapsed && opts.heading !== false, (el) => el.child(this.heading(view.sort, t)))
       .when(view.list.length === 0 && !view.collapsed, (el) => el.child(this.emptyMessage(t)))
       .child(v_flex().relative().flex_1().min_h(0).child(list).child(scrollingScrollbar("ag-list")))
-      .when(view.collapsed, (el) => el.child(this.expandRow(t)));
+      .when(view.collapsed && opts.expand !== false, (el) => el.child(this.expandRow(t)));
   }
 
   // ── What to show ──────────────────────────────────────────────────────────
@@ -593,34 +577,29 @@ export class Agents {
   }
 
   railRow(a, alias, t) {
+    const space = spaces().find((item) => item.id === a.space);
+    const tab = space?.tabs?.find((item) => item.id === a.tab) ?? { name: a.program?.name || a.address };
+    const title = automaticTabTitle(tab, { ...a, terminal: a.address });
+    const where = space ? ` · ${space.machine ?? "Local"}/${space.name}` : "";
+    const label = `${title}${where}${alias ? ` · ${alias}` : ""}`;
     return h_flex()
       .id(`ag-${a.address}`)
-      .h(26)
-      .px(8)
+      .relative()
+      .h(36)
+      .rounded(6)
       .flex_none()
       .items_center()
-      .gap(4)
+      .justify_center()
       .cursor_pointer()
-      .tooltip(alias ? `${alias} · ${a.address}` : a.address)
+      .accessibility_label(label)
+      .tooltip(label)
+      .when(a.focused, (el) => el.bg(t.selected))
       .hover((s) => s.bg(t.hover))
-      .on_click(() => run("pane.focus", { pane: a.pane }))
-      .child(
-        div()
-          .flex_1()
-          .min_w(0)
-          .whitespace_nowrap()
-          .text_right()
-          .text_color(t.muted)
-          .child(alias.slice(alias.lastIndexOf("/") + 1)),
-      )
-      .child(
-        h_flex()
-          .w(14)
-          .flex_none()
-          .items_center()
-          .justify_center()
-          .child(this.status(t, a, true)),
-      );
+      .on_click(() => run("agent.focus", { terminal: a.address }))
+      .child(icon(a.program, 18, t.foreground) ?? Icon("monitor", 18).text_color(t.muted))
+      .when(a.status !== "idle", (el) => el.child(
+        div().absolute().right(5).bottom(5).size(6).rounded_full().bg(t[a.status] ?? t.dim),
+      ));
   }
 
   agentRow(a, alias, subs, view, t) {

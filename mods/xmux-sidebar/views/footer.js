@@ -5,6 +5,7 @@ import { div } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { theme, run, updates, readTextFile, appHome } from "herdr";
 import { Icon, SIZE } from "./ui.js";
+import { narrow, toggleSidebar } from "./chrome.js";
 
 export class Footer {
   init(_given, cx) {
@@ -38,6 +39,11 @@ export class Footer {
 
   render() {
     const t = theme();
+    if (narrow()) {
+      return h_flex().id("sidebar-footer").size_full().items_center().justify_center()
+        .bg(t.chrome).border_t(1).border_color(t.border)
+        .child(this.button("sidebar-expand", "Expand sidebar", toggleSidebar, t, [Icon("sidebar", 15)]));
+    }
     const updateDot = updates().app.ready ? [div().size(6).rounded_full().bg(t.accent)] : [];
     return h_flex()
       .id("sidebar-footer")

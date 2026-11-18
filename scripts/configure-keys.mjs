@@ -12,21 +12,34 @@ const mappings = {
   "cmd-t": ["xmux-status.new-terminal", "tab.new"],
   "cmd-d": ["xmux-status.split-right", "pane.split:right"],
   "cmd-shift-d": ["xmux-status.split-down", "pane.split:down"],
+  "cmd-p": ["mod.open:xmux-picker", "mod.open:picker"],
   "cmd-ctrl-left": ["xmux-sidebar.show-spaces"],
   "cmd-ctrl-right": ["xmux-sidebar.show-agents"],
   "cmd-ctrl-up": ["xmux-status.cross-tab-prev"],
   "cmd-ctrl-down": ["xmux-status.cross-tab-next"],
   "cmd-ctrl-j": ["xmux-status.focus-attention"],
 };
+const directions = ["left", "right", "up", "down"];
+for (const direction of directions) mappings[`cmd-shift-${direction}`] = [`pane.go:${direction}`];
 let changed = false;
 for (const [key, [action, builtin]] of Object.entries(mappings)) {
-  const existing = section[key] ?? (builtin === undefined ? keys.global?.[key] : undefined);
+  const existing = section[key] ?? keys.global?.[key];
   if (existing === action) continue;
   if (existing !== undefined && existing !== builtin) {
     console.warn(`Kept personal XMux binding ${key}: ${existing}`);
     continue;
   }
   section[key] = action;
+  changed = true;
+}
+for (const direction of directions) {
+  const oldKey = `cmd-alt-${direction}`;
+  const action = `pane.go:${direction}`;
+  const newKey = `cmd-shift-${direction}`;
+  if ((section[newKey] ?? keys.global?.[newKey]) !== action) continue;
+  if ((section[oldKey] ?? keys.global?.[oldKey]) !== action) continue;
+  // Suppress the former pane binding in XMux while preserving other layouts.
+  section[oldKey] = "terminal";
   changed = true;
 }
 if (changed) {

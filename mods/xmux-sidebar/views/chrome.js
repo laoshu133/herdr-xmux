@@ -2,25 +2,18 @@ import { div, image } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { theme, run, window, shared, setShared, layout } from "herdr";
 import { Icon } from "./ui.js";
+import { findNode } from "./find-node.js";
 
-function find(node, id) {
-  if (node?.id === id) return node;
-  for (const child of node?.children ?? []) {
-    const found = find(child, id);
-    if (found) return found;
-  }
-  return null;
-}
+export const narrow = () => (findNode(layout(), "sidebar")?.size?.px ?? Infinity) < 160;
 
-const narrow = () => (find(layout(), "sidebar")?.size?.px ?? Infinity) < 160;
-
-function toggleSidebar() {
-  const width = find(layout(), "sidebar")?.size?.px;
-  if (!narrow()) setShared("sidebar.width", width);
-  setShared("sidebar.collapsed", !narrow());
+export function toggleSidebar() {
+  const folded = narrow();
+  const width = findNode(layout(), "sidebar")?.size?.px;
+  if (!folded) setShared("sidebar.width", width);
+  setShared("sidebar.collapsed", !folded);
   run("layout.resize", {
     id: "sidebar",
-    px: narrow() ? (shared("sidebar.width") ?? 268) : window()?.platform === "macos" ? 76 : 44,
+    px: folded ? (shared("sidebar.width") ?? 268) : 48,
   });
 }
 
@@ -67,12 +60,12 @@ export class Chrome {
       )
       .when(!collapsed, (el) =>
         el.child(
-          this.button("search", "Search", () => run("mod.open", { name: "picker" }), t).child(
+          this.button("search", "Go to", () => run("mod.open", { name: "xmux-picker" }), t).child(
             Icon("search", 15),
           ),
         ),
       )
-      .when(!(collapsed && window()?.platform === "macos"), (el) =>
+      .when(!collapsed, (el) =>
         el.child(
           this.button("sidebar-toggle", "Toggle sidebar", toggleSidebar, t).child(
             Icon("sidebar", 15),

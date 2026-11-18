@@ -23,6 +23,7 @@ xmux-changes
 xmux-branch-pr
 xmux-branch-issue
 xmux-new-menu
+xmux-picker
 xmux-quick-dialog
 xmux-status'
 

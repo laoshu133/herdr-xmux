@@ -38,6 +38,7 @@ Changes, PRs, and Issues panels.
 | `mods/xmux-branch-pr` | Pull request workflow. |
 | `mods/xmux-branch-issue` | Issue workflow. |
 | `mods/xmux-new-menu` | Terminal and agent creation menu. |
+| `mods/xmux-picker` | Go to spaces, tabs and split agents by name. |
 | `mods/xmux-quick-dialog` | Floating local terminal title bar and controls. |
 | `mods/xmux-status` | Bottom status bar and XMux commands. |
 
@@ -124,6 +125,8 @@ frames, and a 0.5px outer gutter when the right panel is closed.
 These mappings belong in the personal Mackup/iCloud-managed `keys.json`:
 
 ```text
+cmd-p (XMux)     -> mod.open:xmux-picker
+cmd-shift-arrow  -> pane.go in that direction
 cmd-ctrl-left    -> xmux-sidebar.show-spaces
 cmd-ctrl-right   -> xmux-sidebar.show-agents
 cmd-ctrl-up      -> xmux-status.cross-tab-prev
@@ -142,6 +145,8 @@ cmd-shift-d (XMux) -> xmux-status.split-down
 The XMux bindings belong in a `layout:XMux` section. Ctrl+Cmd+Left selects
 Spaces and Ctrl+Cmd+Right selects Agents. Ctrl+Cmd+Up/Down cycles through
 workspace tabs in Spaces and the ordered Agent list in Agents.
+Cmd+Shift+Arrow focuses a split pane in the corresponding direction.
+Cmd+P searches tab titles, agent tasks and spaces by `machine/space` name.
 Ctrl+Cmd+J jumps to the first blocked
 Agent in list order. After all blocked Agents clear, it jumps to the first
 unread completed Agent or shows a notification when there is no pending work.

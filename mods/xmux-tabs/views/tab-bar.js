@@ -1,7 +1,7 @@
 // One horizontally scrolling tab strip, the + after it, then the toolbar and ⋮.
 import { div, svg, image } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { spaces, panes, focused, run, openOverlay, setShared, theme, window, shared } from "herdr";
+import { spaces, panes, focused, run, openOverlay, setShared, theme, window, shared, layout, settings } from "herdr";
 import { openTerminalTab } from "../shared/context.js";
 import { TEXT, Icon, IconButton, DropLine } from "./ui.js";
 import { automaticTabTitle, tabLead } from "./tab-title.js";
@@ -12,6 +12,14 @@ const TAB_GAP = 0;
 const TOOLBAR_GAP = 4;
 const BAR_HEIGHT = TAB_HEIGHT;
 const BAR_PADDING = 0;
+
+// Native buttons stay in window coordinates while XMux sizes follow UI zoom.
+export function tabBarInset(root, w, zoom = 1) {
+  if (w?.platform !== "macos" || w.titlebar !== "none" || w.fullscreen || !root?.traffic_lights) return 0;
+  const sidebar = root.children?.find((node) => node.id === "sidebar");
+  const width = sidebar?.hidden ? 0 : sidebar?.size?.px ?? 0;
+  return Math.max(0, (root.traffic_lights[0] + 64) / zoom - width);
+}
 
 const contains = (bounds, point) =>
   bounds &&
@@ -179,7 +187,7 @@ export const tabBarMethods = {
       .min_h(BAR_HEIGHT)
       .max_h(BAR_HEIGHT)
       .min_w(0)
-      .pl(0)
+      .pl(tabBarInset(layout(), window(), settings().zoom))
       .pr(10)
       .pt(BAR_PADDING / 2)
       .gap(TAB_GAP)

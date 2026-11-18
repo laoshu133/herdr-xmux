@@ -47,11 +47,6 @@ const AVATAR_COLORS = {
   ansi1: "#d9649a",
 };
 
-// A space speaks up only when something in it needs you.
-function glyph(status) {
-  return status === "blocked" || status === "done" ? "●" : "·";
-}
-
 function tone(t, status) {
   return t[status] ?? t.unknown;
 }
@@ -485,7 +480,7 @@ export class Spaces {
         cx.notify();
       })
       .child(Icon(m ? "server" : "monitor", 13));
-    if (collapsed) return head;
+    if (collapsed) return head.justify_center().tooltip(m ?? "This computer");
     return head
       .child(
         div()
@@ -795,25 +790,25 @@ export class Spaces {
   }
 
   compact({ w, i }, t) {
-    const badge = this.prBadge(w, t, true);
+    const label = `${w.machine ?? "Local"}/${w.name}`;
     const row = h_flex()
       .id(`space-${w.id}`)
       .relative()
-      .h(26)
+      .h(36)
       .flex_none()
+      .items_center()
       .justify_center()
-      .gap(4)
+      .rounded(6)
       .cursor_pointer()
-      .when(w.active, (el) => el.bg(t.raised))
+      .accessibility_label(label)
+      .tooltip(label)
+      .when(w.active, (el) => el.bg(t.selected))
       .hover((s) => s.bg(t.hover))
       .when(this.pressed === w.id && this.over !== w.id, (el) => el.opacity(0.5))
-      .child(
-        div()
-          .text_color(w.active ? t.foreground : t.muted)
-          .child(String(i + 1)),
-      )
-      .when(Boolean(badge), (el) => el.child(badge))
-      .when(!badge, (el) => el.child(div().text_color(tone(t, w.status)).child(glyph(w.status))))
+      .child(this.avatar(w, t).size(20))
+      .when(Boolean(w.status && w.status !== "idle"), (el) => el.child(
+        div().absolute().right(5).bottom(5).size(6).rounded_full().bg(tone(t, w.status)),
+      ))
       .when(this.pressed !== null && this.over === w.id && this.pressed !== w.id, (el) =>
         el.child(this.dropLine(i, t)),
       );
@@ -891,7 +886,7 @@ export class Spaces {
       .id("spaces-list")
       .flex_1()
       .min_h(0)
-      .px(8)
+      .px(collapsed ? 4 : 8)
       .pb(14)
       .overflow_y_scroll()
       .on_mouse_up("left", (_e, cx) => {
