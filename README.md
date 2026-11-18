@@ -70,6 +70,17 @@ git pull --ff-only
 ./install.sh
 ```
 
+For an existing symlink installation, edits in the checkout may not reach
+Herdr's configuration-folder watcher. After saving, trigger hot reload with:
+
+```sh
+touch -h ~/.config/herdr-app/mods/xmux-*
+```
+
+This notifies the watcher about the installed links; changed mods reload in
+place. Target one link to reload only that mod. Panel refresh buttons update
+their data rather than reload their code.
+
 Switch to the layout manually with:
 
 ```sh

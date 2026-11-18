@@ -392,18 +392,19 @@ export const listMethods = {
     ])).values()];
     const provider = selected?.provider ?? repositories[0]?.provider ?? this.provider;
     const mixed = new Set(repositories.map(p => p.provider?.kind)).size > 1;
-    const name = mixed ? "Pull / Merge Requests" : provider?.kind === "gitlab" ? "Merge Requests" : "Pull Requests";
-    const repo = repositories.length > 1 ? "Multiple repositories" : selected?.repository ?? repositories[0]?.repository ?? this.repo;
+    const repo = selected?.repository ?? repositories[0]?.repository ?? this.repo;
+    const address = repositories.length > 1 ? "Multiple repositories" : repo ? `${provider?.host ? `${provider.host}/` : ""}${repo}` : "No repository";
     const addresses = repositories.length
       ? repositories.map(p => `${p.provider?.host || ""}/${p.repository}`).join("\n")
       : this.repo ? `${provider?.host || ""}/${this.repo}` : "";
     const branch = this.pr?.headRefName || this.branch;
     const count = !selected && this.view === "all" && this.listLoaded
       ? `${this.items.length} loaded${this.total != null ? ` / ${this.total}` : ""}` : "";
-    const context = [branch || (this.repoLoading ? "Finding repository…" : "No branch"), count].filter(Boolean).join(" · ");
+    const branchLabel = branch || (this.branchLoading ? "Finding branch…" : "No branch");
+    const context = [addresses, branchLabel, count].filter(Boolean).join("\n");
     return h_flex()
       .id("pr-footer")
-      .h(46)
+      .h(30)
       .flex_none()
       .px(14)
       .gap(8)
@@ -412,24 +413,12 @@ export const listMethods = {
       .border_color(t.border)
       .text_size(TEXT.caption)
       .text_color(t.dim)
-      .child(div().flex_none().tooltip(name).child(Icon(mixed ? "pull-request" : providerIcon(provider))))
-      .child(
-        v_flex()
-          .flex_1()
-          .min_w(0)
-          .gap(2)
-          .child(
-            h_flex().gap(6).min_w(0).items_center()
-              .child(div().flex_none().font_medium().child(name))
-              .child(div().flex_1().min_w(0).truncate().tooltip(addresses).child(repo || "No repository")),
-          )
-          .child(
-            h_flex().gap(8).min_w(0).items_center()
-              .child(div().flex_1().min_w(0).truncate().tooltip(context).child(context))
-              .child(div().flex_none()
-                .tooltip(this.lastUpdated ? new Date(this.lastUpdated).toLocaleString() : "")
-                .child(this.busy ? "Updating…" : this.updatedLabel())),
-          ),
-      );
+      .child(div().flex_none().tooltip(addresses).child(Icon(mixed ? "pull-request" : providerIcon(provider))))
+      .child(div().flex_1().min_w(0).truncate().tooltip(context).child(address))
+      .child(div().flex_none().child("·"))
+      .child(div().min_w(0).max_w(100).truncate().tooltip(branchLabel).child(branchLabel))
+      .child(div().flex_none()
+        .tooltip(this.lastUpdated ? `${this.updatedLabel()} · ${new Date(this.lastUpdated).toLocaleString()}` : "Not updated yet")
+        .child(this.busy ? "Updating…" : this.lastUpdated ? timeAgo(new Date(this.lastUpdated).toISOString()) : "–"));
   },
 };
