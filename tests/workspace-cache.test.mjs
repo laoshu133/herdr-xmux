@@ -23,6 +23,20 @@ test("sidebar mode routes the navigation keys to workspace tabs or native Agent 
   assert.deepEqual(calls, [["cross-tab", -1], ["agent.prev"], ["agent.next"]]);
 });
 
+test("sidebar aliases are stable per machine across sorting, exits and reconnects", async () => {
+  const { assignAgentAliases } = await moduleAt("../mods/xmux-sidebar/views/agents.js", ["assignAgentAliases"]);
+  const list = (...addresses) => addresses.map((address) => ({ address }));
+  const original = assignAgentAliases({}, list("m5/t26", "t40", "mi-ber/t26", "m5/t21"));
+  assert.deepEqual(original, {
+    "m5/1": "m5/t26", "1": "t40", "mi-ber/1": "mi-ber/t26", "m5/2": "m5/t21",
+  });
+  assert.equal(assignAgentAliases(original, list("m5/t21", "m5/t26", "t40")), original);
+
+  const updated = assignAgentAliases(original, list("m5/t30", "m5/t21", "t42"));
+  assert.deepEqual(updated, { ...original, "m5/3": "m5/t30", "2": "t42" });
+  assert.equal(assignAgentAliases(updated, list("mi-ber/t26", "m5/t30")), updated);
+});
+
 test("attention follows sidebar order and waits for every blocked Agent to clear", async () => {
   const agents = [
     { address: "done", status: "done" },

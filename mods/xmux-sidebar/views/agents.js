@@ -69,8 +69,37 @@ const SORTS = [
   { id: "prefix", label: "Grouped by prefix", icon: "tag" },
 ];
 const sortOf = () => SORTS.find((s) => s.id === shared("agents.sort")) ?? SORTS[0];
+const AGENT_ALIASES = "xmux-sidebar.agent-aliases";
 const SECTION = { 4: "Needs you", 3: "Done", 2: "Working", 1: "Idle" };
 const SECTION_STATUS = { 4: "blocked", 3: "done", 2: "working" };
+
+const machinePrefix = (address) => address.slice(0, address.lastIndexOf("/") + 1);
+
+function agentAliasesByAddress(aliases) {
+  return new Map(Object.entries(aliases).map(([alias, address]) => [address, alias]));
+}
+
+// Keep old assignments so an alias from an earlier task cannot reach a new terminal.
+export function assignAgentAliases(aliases, list) {
+  const byAddress = agentAliasesByAddress(aliases);
+  if (list.every((a) => byAddress.has(a.address))) return aliases;
+  const assigned = { ...aliases };
+  const counts = new Map();
+  for (const address of byAddress.keys()) {
+    const prefix = machinePrefix(address);
+    counts.set(prefix, (counts.get(prefix) ?? 0) + 1);
+  }
+  for (const { address } of list) {
+    if (byAddress.has(address)) continue;
+    const prefix = machinePrefix(address);
+    const number = (counts.get(prefix) ?? 0) + 1;
+    const alias = `${prefix}${number}`;
+    counts.set(prefix, number);
+    byAddress.set(address, alias);
+    assigned[alias] = address;
+  }
+  return assigned;
+}
 
 // Herdr's tab.move index is one-based and describes the insertion point after
 // the dragged tab has been removed. Keep this calculation local to the
@@ -375,13 +404,13 @@ export class Agents {
   }
 
   // opts, from the lists view: `view` already read, `heading: false` under its tabs.
-  render(opts = {}) {
+  render(cx, opts = {}) {
     const t = theme();
-    const view = opts.view ?? this.readView();
+    const view = opts.view ?? this.readView(cx);
     setAgentOrder(view.list.map((a) => a.address));
     const rows = view.collapsed
-      ? view.list.flatMap((a, i) => this.agentWithSubs(a, i, view, t))
-      : view.groups.flatMap((group, index) => this.groupRows(group, index, view, t));
+      ? view.list.flatMap((a) => this.agentWithSubs(a, view, t))
+      : view.groups.flatMap((group) => this.groupRows(group, view, t));
 
     const list = v_flex()
       .id("ag-list")
@@ -406,11 +435,19 @@ export class Agents {
   // ── What to show ──────────────────────────────────────────────────────────
 
   // Everything one render needs: the agents in order, in their groups.
-  readView() {
+  readView(cx) {
     const sort = sortOf();
     const all = terminals();
     const now = Date.now();
     const unordered = agents();
+    const aliases = agentAliasesByAddress(shared(AGENT_ALIASES) ?? {});
+    if (unordered.some((a) => !aliases.has(a.address))) {
+      cx.timer.after(0, () => {
+        const current = shared(AGENT_ALIASES) ?? {};
+        const next = assignAgentAliases(current, agents());
+        if (next !== current) setShared(AGENT_ALIASES, next);
+      });
+    }
     this.listed = new Map(unordered.map((a) => [a.address, a.status]));
     this.track(unordered, now);
     this.hold(unordered);
@@ -436,6 +473,7 @@ export class Agents {
       shown: focused()?.agent,
       list,
       label,
+      aliases,
       groups: this.makeGroups(pinned, rest, groupOf, byPriority, urgency),
     };
   }
@@ -518,15 +556,15 @@ export class Agents {
       );
   }
 
-  groupRows(group, index, view, t) {
+  groupRows(group, view, t) {
     const members = this.folded.has(group.id)
       ? []
-      : group.members.flatMap((a, i) => this.agentWithSubs(a, i, view, t));
-    return [this.groupHeader(group, index, view, t), ...members];
+      : group.members.flatMap((a) => this.agentWithSubs(a, view, t));
+    return [this.groupHeader(group, view, t), ...members];
   }
 
   // Folded, a group's header also says its most urgent state.
-  groupHeader(group, index, view, t) {
+  groupHeader(group, view, t) {
     const folded = this.folded.has(group.id);
     const top = group.members.reduce(
       (most, a) => ((RANK[a.status] ?? 0) > (RANK[most] ?? 0) ? a.status : most),
@@ -545,15 +583,16 @@ export class Agents {
     });
   }
 
-  agentWithSubs(a, i, view, t) {
-    if (view.collapsed) return [this.railRow(a, i, t)];
+  agentWithSubs(a, view, t) {
+    const alias = view.aliases.get(a.address) ?? "";
+    if (view.collapsed) return [this.railRow(a, alias, t)];
     const subs = this.tree(view.all, a.address);
-    const row = this.agentRow(a, subs, view, t);
+    const row = this.agentRow(a, alias, subs, view, t);
     if (this.folded.has(a.address)) return [row];
     return [row, ...subs.map((s) => this.subRow(t, s, view.shown, view.byPriority))];
   }
 
-  railRow(a, i, t) {
+  railRow(a, alias, t) {
     return h_flex()
       .id(`ag-${a.address}`)
       .h(26)
@@ -562,6 +601,7 @@ export class Agents {
       .items_center()
       .gap(4)
       .cursor_pointer()
+      .tooltip(alias ? `${alias} · ${a.address}` : a.address)
       .hover((s) => s.bg(t.hover))
       .on_click(() => run("pane.focus", { pane: a.pane }))
       .child(
@@ -571,7 +611,7 @@ export class Agents {
           .whitespace_nowrap()
           .text_right()
           .text_color(t.muted)
-          .child(String(i + 1)),
+          .child(alias.slice(alias.lastIndexOf("/") + 1)),
       )
       .child(
         h_flex()
@@ -583,12 +623,11 @@ export class Agents {
       );
   }
 
-  agentRow(a, subs, view, t) {
+  agentRow(a, alias, subs, view, t) {
     const pic = icon(a.program, 16, t.foreground);
     const hovered = this.hovered === a.address;
     const when = this.since(a);
-    // An agent on another machine (`vps/t7`) says which.
-    const machine = a.address.includes("/") ? a.address.split("/")[0] : null;
+    const aliasLabel = view.nested ? alias.slice(machinePrefix(alias).length) : alias;
     const tabSpace = spaces().find((candidate) =>
       (candidate.tabs ?? []).some((item) => item.id === a.tab),
     );
@@ -629,8 +668,15 @@ export class Agents {
       )
       .when(Boolean(pic), (el) => el.child(this.agentIcon(a, pic, subs)))
       .child(this.agentName(a, view, t))
-      .when(Boolean(machine), (el) =>
-        el.child(div().text_size(TEXT.badge).text_color(t.dim).child(machine)),
+      .when(Boolean(alias), (el) =>
+        el.child(
+          div()
+            .flex_none()
+            .text_size(TEXT.badge)
+            .text_color(t.dim)
+            .tooltip(`${alias} · ${a.address}`)
+            .child(aliasLabel),
+        ),
       )
       .when(subs.length > 0, (el) => el.child(this.foldButton(a, subs, t)))
       .when(hovered, (el) => el.child(this.pinButton(a, t)))

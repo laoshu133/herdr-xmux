@@ -87,6 +87,24 @@ Switch to the layout manually with:
 herdr-app do layout.switch '{"name":"XMux"}'
 ```
 
+## Send a task to a sidebar agent
+
+Each machine has its own sequence. In Spaces, rows under a machine heading
+show just the number. Hover over a number to see the full alias (such as
+`m5/1`) and its Core address. Local aliases are bare numbers such as `1`.
+Sorting and closing a session leave its alias reserved.
+
+You can tell an agent on the machine running XMux, “Use hc to send this task
+to XMux sidebar agent `m5/1`.” Look up the alias in the Herdr app's shared
+state, then use its Core address with `hc send` if the terminal is live.
+
+```sh
+address=$(jq -er --arg alias 'm5/1' '."xmux-sidebar.agent-aliases"[$alias]' \
+  "${HERDR_APP_HOME:-$HOME/.config/herdr-app}/shared.json") &&
+  hc get --json "$address" | jq -e '.state == "live"' >/dev/null &&
+  hc send "$address" 'Your task'
+```
+
 ## Local verification
 
 ```sh

@@ -48,7 +48,7 @@ export class Lists {
     this.spaces.under = null;
     this.spaces.quiet = null;
     this.spaces.above = null;
-    const view = this.agents.readView();
+    const view = this.agents.readView(cx);
     const navigation = {
       tab: this.spaces.settings.combined ? this.tab : "spaces",
       order: view.list.map((agent) => agent.address),
@@ -70,10 +70,10 @@ export class Lists {
             .child(this.spaces.header(t, collapsed))
             .child(this.spaces.body(t, collapsed)),
         )
-        .child(v_flex().flex_1().min_h(0).child(this.agents.render({ view })));
+        .child(v_flex().flex_1().min_h(0).child(this.agents.render(cx, { view })));
 
     root.child(this.tabBar(t, view));
-    if (this.tab !== "spaces") return root.child(this.agents.render({ view, heading: false }));
+    if (this.tab !== "spaces") return root.child(this.agents.render(cx, { view, heading: false }));
 
     // Spaces, each with its tabs and agents beneath in tab order, so rows don't move as
     // their state changes; next-agent keys follow that order.
@@ -84,7 +84,7 @@ export class Lists {
     const pinned = view.groups.find((g) => g.id === "pinned");
     const pins = pinned?.members.map((a) => a.address) ?? [];
     order.push(...pins);
-    this.spaces.above = () => (pinned ? this.agents.groupRows(pinned, 0, view, t) : []);
+    this.spaces.above = () => (pinned ? this.agents.groupRows(pinned, view, t) : []);
     const nest = (lines, row) => h_flex().children(lines.map((l) => Rail(l))).child(row.flex_1().min_w(0));
     // A space's agents hang from its line; a main space's worktrees come after them,
     // so its line carries on, and a worktree's own agents sit one step further in.
@@ -102,7 +102,7 @@ export class Lists {
       return items.flatMap((x, i) => {
         const last = i === items.length - 1 && !kids;
         const [row, ...subs] = x.a
-          ? this.agents.agentWithSubs(x.a, i, nested, t)
+          ? this.agents.agentWithSubs(x.a, nested, t)
           : [this.agents.tabRow(w, x.tab, x.tab.id === shownTab, t)];
         return [nest([...before, last ? "└" : "├"], row), ...subs.map((s) => nest([...before, last ? "" : "│"], s))];
       });
