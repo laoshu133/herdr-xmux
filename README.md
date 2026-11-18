@@ -11,14 +11,14 @@ Changes, PRs, and Issues panels.
 ## Features
 
 - A single 36px tab row with horizontal scrolling and truncated titles.
-- Same-space tab dragging, machine ordering, and space and agent navigation.
-- `+` starts a terminal in the active pane's directory; Shift-click opens the
-  terminal and agent picker. `Cmd+Ctrl+T` opens the same picker.
-- `Cmd+Shift+T` starts a fresh terminal in the most recently closed tab's
-  directory, at its previous position. It does not resume the old process.
-- `` Cmd+` `` toggles a draggable local terminal over XMux. Hiding keeps the
-  shell running; closing it or exiting the shell removes the window.
-- Files, Changes, PRs, and Issues panels with repository-aware actions.
+- Same-space tab dragging, machine ordering, and a collapsible Spaces and
+  Agents sidebar.
+- Go to search across machines, spaces, tabs, and Agent tasks.
+- `+` starts a terminal in the active pane's directory. Shift-click opens the
+  terminal and Agent creation menu.
+- A draggable quick terminal and live shell and Agent titles.
+- Files, Changes, PRs, and Issues panels with actions to insert paths and links
+  into Agent chats.
 - One-pixel pane frames, split spacing, focus treatment, and continuous shell
   boundaries.
 - A Ghostty Solarized Dark theme shared by the Herdr chrome and terminals.
@@ -88,6 +88,117 @@ Switch to the layout manually with:
 herdr-app do layout.switch '{"name":"XMux"}'
 ```
 
+## Navigation and shortcuts
+
+The sidebar's collapse button reduces it to a 48px icon rail. Use the expand
+button at the bottom to restore its previous width. `Cmd+B` hides or shows the
+sidebar when bound to Herdr's `layout.toggle:sidebar` action. In a windowed
+macOS layout with native traffic lights, the tab bar leaves room for the
+buttons when the sidebar is collapsed or hidden.
+
+Open **Go to** with `Cmd+P` or the sidebar search button. Search by
+`machine/space`, tab title, or Agent task title. Local spaces use the local
+hostname. Agent titles follow the tab title rules, and selecting an individual
+Agent result in a split tab focuses its pane.
+
+### Shortcuts installed for XMux
+
+`./install.sh` adds these bindings under `layout:XMux` in `keys.json` and
+preserves custom bindings. When a new split-pane binding is active, the old
+matching `Option+Cmd+Arrow` binding is disabled within XMux.
+
+| Shortcut | Action |
+| --- | --- |
+| `Cmd+P` | Open Go to. |
+| `Shift+Cmd+←/→/↑/↓` | Focus the split pane in that direction. |
+| `Ctrl+Cmd+←` / `Ctrl+Cmd+→` | Select Spaces / Agents in the sidebar. |
+| `Ctrl+Cmd+↑` / `Ctrl+Cmd+↓` | Move backward / forward through workspace tabs in Spaces or the ordered Agent list in Agents. |
+| `Ctrl+Cmd+J` | Go to the first blocked or errored Agent in list order. Once those are cleared, go to the first unread completed Agent. Herdr shows a notification when no Agent needs attention. |
+| `Cmd+T` | Start a terminal in the active pane's directory. |
+| `Cmd+D` / `Shift+Cmd+D` | Split the current pane to the right / down. |
+
+### Optional macOS configuration
+
+Merge these entries into the corresponding sections of your personal
+`keys.json` to enable the quick terminal, Ghostty-style screen clearing, and
+the other shortcuts below. Keep your existing entries when merging the example.
+
+```json
+{
+  "global": {
+    "cmd-b": "layout.toggle:sidebar"
+  },
+  "layout:XMux": {
+    "cmd-ctrl-t": "xmux-tabs.new-menu",
+    "cmd-shift-t": "xmux-status.reopen-closed",
+    "cmd-`": "xmux-status.quick-dialog",
+    "cmd-w": "xmux-status.close-current"
+  },
+  "terminal": {
+    "cmd-r": "send:\f"
+  }
+}
+```
+
+- `Ctrl+Cmd+T` opens the terminal and Agent creation menu. `Shift+Cmd+T`
+  starts a fresh terminal at the position and working directory of the most
+  recently closed tab.
+- `` Cmd+` `` shows or hides the quick terminal. `Cmd+W` closes it when it has
+  keyboard focus and closes the current tab otherwise.
+- `Cmd+R` sends a form feed in the terminal to clear the screen in shells that
+  bind form feed to screen clearing.
+
+The layout selects `ghostty-solarized-dark`. For the scrollbar behavior in the
+preview, set `"pane_scrollbars": false` in Herdr's `settings.json` to hide the
+terminal pane scrollbar thumb. XMux lists keep their scrollbars.
+
+### Quick terminal and titles
+
+The quick terminal starts in the focused local terminal's directory, or in the
+local home directory when working remotely. Drag the title bar to move it.
+XMux remembers its position and reuses a still-running shell after hiding the
+window, switching layouts, or restarting the app. Closing the window or
+exiting the shell ends the session.
+
+The quick terminal and tabs use the live terminal title (OSC), including titles
+set by remote shells over SSH. Shell titles fall back to the shell name and one
+directory label. Agent tabs use the current task title, including on inactive
+remote tabs. Explicit tab names take precedence, with legacy Agent program
+names treated as automatic titles. New Agents start with automatic titles.
+
+When opening the quick terminal, XMux attempts to focus it through the local
+`herdr-app` CLI. Click the terminal to type if your Herdr version requires it.
+Herdr 0.1.16 users can apply the [optional overlay focus patch](patches/README.md).
+
+## Add to chat
+
+File context menus in Files, previews, and Changes and Commits lists offer
+**Add to chat** and **Add to other chat**. PR and Issue views offer the same
+actions for links. For local files, **Show in Finder** starts a separate group
+below the editor actions.
+
+- **Add to chat** inserts at the cursor in the focused pane. It is enabled
+  when that pane has a live Agent.
+- **Add to other chat** opens a machine and Agent picker. It starts on the
+  current machine and selects the first Agent in the current Space when one
+  is available. Agent names use the same title rules as tabs. Use `↑` and `↓`
+  to move, and `←`, `→`, or `Tab` to switch columns. Press `Enter` in the
+  Agent column, double-click an Agent, or click **Add** to insert. Press `Esc`
+  to cancel.
+
+Both actions leave the text in the draft with a space on either side. XMux
+temporarily uses the clipboard to paste and restores the previous plain text
+when available.
+
+| Destination | File reference |
+| --- | --- |
+| Focused Agent or another Agent in the same Space | Path relative to the Agent pane's working directory |
+| Another Space on the same machine | Absolute path |
+| Another machine | `source-machine:/absolute/path/to/file` |
+
+When sending from this computer to a remote machine, `source-machine` is the
+value returned by the local `hostname` command.
+
 ## Send a task to a sidebar agent
 
 Each machine has its own sequence. In Spaces, rows under a machine heading
@@ -120,54 +231,6 @@ herdr-app status
 The layout uses `terminal_padding: [2, 2]`, a 28px status bar, one-pixel pane
 frames, and a 0.5px outer gutter when the right panel is closed.
 
-## Personal shortcuts used with XMux
-
-These mappings belong in the personal Mackup/iCloud-managed `keys.json`:
-
-```text
-cmd-p (XMux)     -> mod.open:xmux-picker
-cmd-shift-arrow  -> pane.go in that direction
-cmd-ctrl-left    -> xmux-sidebar.show-spaces
-cmd-ctrl-right   -> xmux-sidebar.show-agents
-cmd-ctrl-up      -> xmux-status.cross-tab-prev
-cmd-ctrl-down    -> xmux-status.cross-tab-next
-cmd-ctrl-j       -> xmux-status.focus-attention
-cmd-ctrl-t       -> xmux-tabs.new-menu
-cmd-shift-t      -> xmux-status.reopen-closed
-cmd-r (terminal) -> send form feed, matching Ghostty
-cmd-` (XMux)     -> xmux-status.quick-dialog
-cmd-w (XMux)     -> xmux-status.close-current
-cmd-t (XMux)     -> xmux-status.new-terminal
-cmd-d (XMux)     -> xmux-status.split-right
-cmd-shift-d (XMux) -> xmux-status.split-down
-```
-
-The XMux bindings belong in a `layout:XMux` section. Ctrl+Cmd+Left selects
-Spaces and Ctrl+Cmd+Right selects Agents. Ctrl+Cmd+Up/Down cycles through
-workspace tabs in Spaces and the ordered Agent list in Agents.
-Cmd+Shift+Arrow focuses a split pane in the corresponding direction.
-Cmd+P searches tab titles, agent tasks and spaces by `machine/space` name.
-Ctrl+Cmd+J jumps to the first blocked
-Agent in list order. After all blocked Agents clear, it jumps to the first
-unread completed Agent or shows a notification when there is no pending work.
-
-`close-current` closes the quick terminal when it has keyboard focus,
-otherwise it closes the current tab.
-The terminal starts in the focused local terminal's directory, or the local
-home directory when working remotely. Drag its title bar to move it; its
-position is remembered. Switching layouts hides it; returning to XMux and
-toggling it reuses the shell. App restarts also reuse a still-running shell.
-Opening or reopening quietly attempts `pane.focus` through the local
-`herdr-app` control CLI. Clients that support overlay terminal focus do so
-automatically; otherwise click the terminal to type. Unsupported commands or
-a missing CLI leave the draggable window usable without an error toast.
-Each opening retries, so future Herdr support takes effect automatically.
-The optional [overlay focus patch](patches/README.md) adds support to 0.1.16.
-
-The current personal setup also uses `ghostty-solarized-dark` and disables
-Herdr's terminal pane scrollbar thumb with `pane_scrollbars: false`; XMux
-mod lists retain Herdr's scrolling scrollbar behavior.
-
 ## Privacy
 
 XMux does not store GitHub or GitLab tokens. Provider access is discovered from
@@ -184,6 +247,7 @@ Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE).
 CodeViewer, tab titles, and file menus. Herdr confines imports to each mod directory, so run
 `node scripts/sync-common.mjs` after changing those files and include the generated
 `mods/*/shared/` copies. The installer checks for stale copies. Node.js is required.
+Herdr generates `gpui-kit.d.ts` locally under `mods/`, where Git ignores it.
 
 New terminals keep the active terminal's exact cwd. On a file/diff tab they use
 that space's project directory, including remote spaces whose persisted folder
@@ -196,20 +260,16 @@ Hidden file viewers also stop their file/Git polls. Status reads coalesce for 1s
 repository summaries cache for 10s, and commit-file lists/diffs cache for 30min.
 Stage/unstage/commit and manual refresh invalidate relevant repository reads.
 
-PRs/Issues refresh only when visible and idle (60s by default). Lists and branch
-queries cache for 60s; details/jobs for 30s; repository discovery for 5min and
-provider detection for 10min. Equivalent in-flight reads join one request.
-Provider discovery checks which hosting CLIs are installed and authenticated for
-the Git remote's host, then verifies the repository through the matching CLI.
-Small discovery metadata is shared across mod instances; API payloads stay in
-bounded runtime memory.
+PRs and Issues refresh only when visible and idle (60s by default). Lists and
+branch queries cache for 60s, and detail requests cache for 30s. Equivalent
+in-flight reads join one request. Small discovery metadata is shared across mod
+instances. API payloads stay in bounded runtime memory.
 Failed reads back off for 5–60s, keeping existing content. Read CLI calls have
 explicit timeouts. Hosting requests use local gh/glab authentication even for a
 remote checkout; Git operations run on that checkout's machine.
 
 Manual refresh bypasses cached reads and errors. Successful API writes invalidate
-the panel's API cache. After changing CLI accounts or login state, use manual
-refresh; account changes made outside Herdr are not automatically detected.
+the panel's API cache.
 
 CodeViewer wraps native readonly Editor for ordinary source. Changes-marked source,
 working-tree/commit/PR diffs share one decorated renderer: selectable native text
@@ -227,10 +287,6 @@ and saved directory. File trees, previews, and Changes/Commits lists share the
 Files context menu; VS Code opens the owning workspace and file, using the
 configured SSH target for remote files.
 
-Agent tabs follow Core's current task title, including inactive remote tabs.
-Legacy labels matching the agent's program name are treated as automatic titles;
-other explicit tab names take precedence. New agents start without a fixed tab name.
-
 ## Pull and merge requests
 
 The `PRs` entry uses one panel for GitHub Pull Requests and GitLab Merge
@@ -239,6 +295,9 @@ and `gh`; GitLab uses REST API v4 through `glab api`. Hosting requests run
 locally with the CLI's existing authentication, including for remote spaces.
 Git discovery, fetch and worktree creation run on the checkout's machine.
 No hosting token is stored by XMux.
+
+The footer shows the repository and branch. Click it to open the repository
+on its hosting service when the panel has a single repository in context.
 
 The adapters share repository/request identities and UI contracts, but keep
 native review, approval, CI and merge semantics. GitLab displays `!IID`,
@@ -255,16 +314,37 @@ in `branch.<branch>.herdr-pr`; old `owner/repo#number` GitHub bindings still
 work. Fetches use the target project's PR/MR head ref and verify its SHA before
 creating a worktree. Worktree folders also include platform and host.
 
-The panel caches lists for 60 seconds and details/discussions/CI for 30 seconds.
-GitLab Discussions and Pipelines load on first use; job traces load on demand.
-Versioned diffs are cached by source and base commits. Cached content remains
-visible during background refreshes; hidden panels stop polling. Writes
-invalidate the affected repository, and write requests are never retried
-automatically. Refresh explicitly clears hosting metadata and data caches;
-use it after changing CLI accounts or project policies. The sidebar shares
-provider discovery and reads the panel's CLI/host settings.
+GitLab Discussions and Pipelines load on first use, and job traces load on
+demand. Discussions, checks, jobs, and logs cache for 30 seconds. Versioned
+diffs cache for one hour by source and base commits. Cached content stays
+visible during background refreshes. Write requests require an explicit retry.
 
-Optional `settings` in `mods/xmux-branch-pr/mod.json`:
+### Hosting CLI setup and caches
+
+Install `gh` for GitHub or `glab` for GitLab on the computer running XMux.
+Sign in to the API host with `gh auth login --hostname HOST` or
+`glab auth login --hostname HOST`. Automatic discovery reads the host and
+project path from the Git remote, checks which CLIs are available with
+`--version`, checks their authorization for that exact host, and verifies
+repository access through the CLI's API command. This also supports GitHub
+Enterprise and self-hosted GitLab.
+
+| Discovery check | Cache lifetime |
+| --- | --- |
+| CLI availability per executable | 10 minutes |
+| CLI authorization per executable and host | 1 minute |
+| Provider resolution per repository | 10 minutes |
+| Repository discovery per checkout | 5 minutes |
+
+Use the panel's **Refresh** action after changing CLI accounts or project
+policies. It clears the relevant discovery and data caches and fetches again.
+
+For the PRs panel and sidebar, set an explicit host mapping when the remote
+uses an SSH alias, the SSH host differs from the API host, or both CLIs can
+access the repository. Save overrides in
+`${HERDR_APP_HOME:-$HOME/.config/herdr-app}/data/xmux-branch-pr/settings.json`.
+The file uses a top-level object. `tools` is optional and defaults to `gh`
+and `glab`.
 
 ```json
 {
@@ -273,12 +353,11 @@ Optional `settings` in `mods/xmux-branch-pr/mod.json`:
     "gitlab": "/path/to/glab"
   },
   "hosts": [
-    { "remote": "git-company", "kind": "gitlab", "host": "code.company.com" }
+    { "remote": "git-company", "kind": "gitlab", "host": "code.example.com" }
   ]
 }
 ```
 
 The example maps `git@git-company:group/subgroup/project.git` to the GitLab API
-at `code.company.com`. Use a mapping when the Git remote uses an SSH alias or an
-SSH host that differs from the API host. Log in to the API host with
-`gh auth login --hostname HOST` or `glab auth login --hostname HOST`.
+at `code.example.com`. Mod manifests can also supply these keys inside their
+`settings` object. The local override file takes precedence.

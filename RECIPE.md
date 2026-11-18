@@ -11,19 +11,14 @@ Changes, PRs, and Issues panels.
 ## Features
 
 - A single 36px tab row with horizontal scrolling and truncated titles.
-- Same-space tab dragging, machine ordering, and space and agent navigation.
-- `+` starts a terminal in the active pane's directory; Shift-click opens the
-  terminal and agent picker. `Cmd+Ctrl+T` opens the same picker.
-- `Cmd+Shift+T` starts a fresh terminal in the most recently closed tab's
-  directory, at its previous position. It does not resume the old process.
-- `` Cmd+` `` shows or hides a draggable local shell in `xmux-quick-dialog`.
-  Hiding preserves the shell; closing or shell exit removes the window.
-  `xmux-status` owns its toggle command and routes `Cmd+W` to it while focused.
-  Opening quietly attempts terminal focus; unsupported clients keep the
-  draggable window and require a click to type. Each opening retries, so
-  upstream support is used automatically. The [overlay focus patch](patches/README.md)
-  is optional for Herdr 0.1.16.
-- Files, Changes, PRs, and Issues panels with repository-aware actions.
+- Same-space tab dragging, machine ordering, and a collapsible Spaces and
+  Agents sidebar.
+- `Cmd+P` opens Go to for machine-qualified spaces, tabs, and Agent tasks.
+- `+` starts a terminal in the active pane's directory. Shift-click opens the
+  terminal and Agent creation menu.
+- A draggable quick terminal with the same live title handling as tabs.
+- Files, Changes, PRs, and Issues panels with actions for adding paths and
+  links to Agent chats. See [Add to chat](README.md#add-to-chat).
 - One-pixel pane frames, split spacing, focus treatment, and continuous shell
   boundaries.
 - A Ghostty Solarized Dark theme shared by the Herdr chrome and terminals.
@@ -34,7 +29,9 @@ Changes, PRs, and Issues panels.
 
 The window has a 268px sidebar, a 36px tab row, the active tab's panes, an
 optional 368px right panel, and a 28px status bar. The sidebar contains spaces,
-agents, machines, and quick actions.
+agents, machines, and quick actions. Collapse it to a 48px icon rail. On macOS
+the tab row leaves room for native traffic lights when the sidebar is collapsed
+or hidden.
 
 The layout uses `terminal_padding: [2, 2]`, one-pixel pane frames and split
 spacing, a 0.5px outer gutter when the right panel is closed, and the
@@ -55,6 +52,7 @@ shared shell, tab, and status boundaries remain continuous.
 | `mods/xmux-branch-pr` | Pull request workflow. |
 | `mods/xmux-branch-issue` | Issue workflow. |
 | `mods/xmux-new-menu` | Terminal and agent creation menu. |
+| `mods/xmux-picker` | Go to spaces, tabs, and split Agents by name. |
 | `mods/xmux-status` | Bottom status bar and XMux commands. |
 
 Herdr supplies the remaining workspace pieces, including its built-in status
@@ -70,23 +68,36 @@ cd ~/works/herdr-xmux
 
 The installer links the layout, theme, and XMux mods into
 `~/.config/herdr-app`, backs up replaced XMux files under `retired/`, checks
-the mods, and switches the running app to the `XMux` layout. Set
-`HERDR_APP_HOME` for another configuration directory or `HERDR_BIN` when
-`herdr-app` is not on `PATH`.
+the mods, adds shortcuts under `layout:XMux`, and switches the running app
+to the `XMux` layout. Set `HERDR_APP_HOME` for another configuration directory
+or `HERDR_BIN` if needed to locate `herdr-app`.
 
 Keep personal `keys.json`, `settings.json`, machine connections, and runtime
 state outside this repository. Mackup/iCloud can sync those files separately.
 
+## Shortcuts
+
+Use `Shift+Cmd+Arrow` to move between split panes, `Ctrl+Cmd+←/→` to switch
+sidebar views, and `Ctrl+Cmd+↑/↓` to cycle through tabs or Agents. `Ctrl+Cmd+J`
+visits Agents needing attention before unread completed Agents. See
+[Navigation and shortcuts](README.md#navigation-and-shortcuts).
+
+To bind `` Cmd+` `` to the quick terminal and configure `Cmd+B`, `Cmd+W`, and
+other macOS shortcuts, see [Optional macOS configuration](README.md#optional-macos-configuration).
+
 ## Provider setup
 
-The PR and Issue mods inspect the repository remote and then use the matching
-authenticated `gh` or `glab` CLI. This supports GitHub Enterprise and GitLab
-deployments without hard-coding a public host.
+The PR and Issue mods inspect the repository remote and use the locally
+authenticated `gh` or `glab` CLI for that host. For hosted or self-managed
+accounts, cache lifetimes, and PR host overrides, see
+[Hosting CLI setup and caches](README.md#hosting-cli-setup-and-caches).
 
 ## Local verification
 
 ```sh
 python3 -m json.tool layouts/XMux.json >/dev/null
+node scripts/sync-common.mjs --check
+node --test tests/*.test.mjs
 find mods -path '*/xmux-*/*.js' -type f -print0 | xargs -0 -n1 node --check
 for mod in mods/xmux-*; do herdr-app check "$mod"; done
 herdr-app do layout.switch '{"name":"XMux"}'
