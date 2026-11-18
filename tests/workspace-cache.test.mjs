@@ -337,6 +337,34 @@ test("shell titles and active/focused pane selection retain their behavior", asy
   assert.equal(tabLead({ id: "tab", active: false }, [a, b], a), b);
 });
 
+test("SSH login, directory changes, and exit update both titles from Core", async () => {
+  const shell = { name: "zsh", key: "shell", shell: true };
+  const ssh = { name: "ssh", key: "program" };
+  const local = "xiaomi@Mi-M2: ~/works/herdr-xmux";
+  const pane = { terminal: "t1", title: local, program: shell };
+  const terminal = { address: "t1", cwd: "/Users/xiaomi/works/herdr-xmux" };
+  const tab = { name: "1" };
+  const { automaticTabTitle, floatingTerminalTitle } = await moduleAt(
+    "../lib/xmux/tab-title.js", ["automaticTabTitle", "floatingTerminalTitle"],
+    { home: () => "/Users/xiaomi", terminals: () => [terminal] },
+  );
+
+  for (const [program, title] of [
+    [shell, local],
+    [ssh, "gd@ai-m4:~"],
+    [ssh, "gd@ai-m4:~/work"],
+    [shell, local],
+  ]) {
+    Object.assign(terminal, { program, title });
+    pane.program = program;
+    assert.equal(floatingTerminalTitle(terminal), title);
+    assert.equal(automaticTabTitle(tab, pane), title);
+  }
+  assert.equal(automaticTabTitle({ named: true, name: "Pinned name" }, pane), "Pinned name");
+  assert.equal(automaticTabTitle(tab, { program: ssh, title: "gd@ai-m4:~" }), "gd@ai-m4:~");
+  assert.equal(floatingTerminalTitle({ program: shell, foreground: { cwd: terminal.cwd } }), "zsh ~/works/herdr-xmux");
+});
+
 async function fileMenuFixture() {
   const overlays = [];
   const api = await moduleAt("../lib/xmux/file-menu.js", ["fileMenuTarget", "showFileMenu"], {

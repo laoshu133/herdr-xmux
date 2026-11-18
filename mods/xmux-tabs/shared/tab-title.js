@@ -3,6 +3,7 @@ import { home, readTextFile, setShared, terminals } from "herdr";
 const sessionTitles = new Map();
 const sessionReads = new Set();
 const SESSION_RETRY_MS = 15000;
+const PATH_TITLE = /^[~/]|^[A-Za-z]:\\/;
 
 function compactTitle(value) {
   const title = String(value ?? "")
@@ -106,42 +107,44 @@ export function automaticTabTitle(tab, pane, publishedTitle) {
   if (tab.named && !generic) return tab.name;
   const conversation = piConversationTitle(pane);
   if (conversation) return conversation;
-  const terminalPane = !pane?.mod;
-  // Inactive remote tabs can retain an old rendered terminal title. Core's
-  // current task title is already in the terminal snapshot; no session read.
-  const record = agent ? terminals().find((r) => r.address === pane.terminal) : null;
-  const raw = terminalPane ? record?.title || pane?.title : publishedTitle || pane?.title;
+  // The rendered pane can retain an older title, especially while inactive.
+  const record = !pane?.mod && pane?.terminal
+    ? terminals().find((r) => r.address === pane.terminal)
+    : null;
+  const raw = pane?.mod ? publishedTitle || pane.title : record?.title || pane?.title;
   return paneTitle(pane, raw, tab.name);
 }
 
 // Floating terminals are published by Core without a tab or pane record.
 export function floatingTerminalTitle(terminal) {
   if (!terminal) return "Local terminal";
-  const pane = { terminal: terminal.address, app: terminal.report?.app, program: terminal.program };
-  return piConversationTitle(pane) || paneTitle(pane, terminal.title, "Local terminal", false);
+  const pane = {
+    terminal: terminal.address,
+    app: terminal.report?.app,
+    program: terminal.program,
+    cwd: terminal.foreground?.cwd || terminal.cwd,
+  };
+  return piConversationTitle(pane) || paneTitle(pane, terminal.title, "Local terminal");
 }
 
-function paneTitle(pane, raw, fallback, showShellFolder = true) {
-  const live = (raw ?? "")
-    .replace(/^[^\p{L}\p{N}~/]+/u, "")
-    .trim();
-  const program = !pane?.mod ? pane?.program?.name : null;
-  if (pane?.program?.shell) {
-    if (live && live !== program && !/^[~/]|^[A-Za-z]:\\/.test(live)) return live;
-    if (!showShellFolder) return program || fallback;
-    const folder = shortFolder(pane.cwd);
-    const location = /^[~/]|^[A-Za-z]:\\/.test(live) ? live : folder;
-    return [program || "Terminal", location].filter(Boolean).join(" ");
+function paneTitle(pane, raw, fallback) {
+  const live = (raw ?? "").trim();
+  const program = pane?.mod ? null : pane?.program;
+  if (!pane?.mod && !program?.agent) {
+    if (!program?.shell) return live && !PATH_TITLE.test(live) ? live : program?.name || live || fallback;
+    const path = PATH_TITLE.test(live);
+    if (live && !path && live !== program.name) return live;
+    const location = path ? live : shortFolder(pane.cwd);
+    return [program.name || "Terminal", location].filter(Boolean).join(" ");
   }
-  const task = live.replace(/\s+\|\s+[^|]+$/, "").trim();
-  const path = /^[~/]|^[A-Za-z]:\\/.test(live);
+  const task = live.replace(/^[^\p{L}\p{N}~/]+/u, "").replace(/\s+\|\s+[^|]+$/, "").trim();
   const telling =
     task &&
-    task !== program &&
-    !path &&
+    task !== program?.name &&
+    !PATH_TITLE.test(task) &&
     !task.includes("@") &&
-    task.toLowerCase() !== (!pane?.mod ? pane?.program?.key : null);
-  return telling ? task : program || task || fallback;
+    task.toLowerCase() !== program?.key;
+  return telling ? task : program?.name || task || fallback;
 }
 
 export function tabLead(tab, all, current = null) {
