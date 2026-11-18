@@ -2,7 +2,7 @@
 // each space's tabs and agents under it, and Agents. With `combined: false` in the settings: the
 // two lists one above the other, as two blocks of this mod would draw them.
 import { v_flex, h_flex } from "gpui-base";
-import { agents, focused, theme, setAgentOrder } from "herdr";
+import { agents, focused, theme, setAgentOrder, setShared } from "herdr";
 import { Spaces } from "./spaces.js";
 import { Agents } from "./agents.js";
 import { TEXT, Badge, Rail } from "./ui.js";
@@ -25,7 +25,7 @@ export class Lists {
     cx.notify();
   }
 
-  render() {
+  render(cx) {
     const t = theme();
     const collapsed = this.spaces.collapsed();
     const root = v_flex()
@@ -41,6 +41,18 @@ export class Lists {
     this.spaces.under = null;
     this.spaces.quiet = null;
     this.spaces.above = null;
+    const view = this.agents.readView();
+    const navigation = {
+      tab: this.spaces.settings.combined ? this.tab : "spaces",
+      order: view.list.map((agent) => agent.address),
+    };
+    const signature = JSON.stringify(navigation);
+    if (signature !== this.navigationSignature) {
+      this.navigationSignature = signature;
+      cx.timer.after(0, () => {
+        if (this.navigationSignature === signature) setShared("xmux-sidebar.navigation", navigation);
+      });
+    }
     // The rail has no room for tabs: both lists, as numbers.
     if (!this.spaces.settings.combined || collapsed)
       return root
@@ -51,9 +63,8 @@ export class Lists {
             .child(this.spaces.header(t, collapsed))
             .child(this.spaces.body(t, collapsed)),
         )
-        .child(v_flex().flex_1().min_h(0).child(this.agents.render()));
+        .child(v_flex().flex_1().min_h(0).child(this.agents.render({ view })));
 
-    const view = this.agents.readView();
     root.child(this.tabBar(t, view));
     if (this.tab !== "spaces") return root.child(this.agents.render({ view, heading: false }));
 

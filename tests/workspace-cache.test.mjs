@@ -4,9 +4,51 @@ import test from "node:test";
 
 async function moduleAt(path, names, deps = {}, clock = Date) {
   const source = (await readFile(new URL(path, import.meta.url), "utf8"))
-    .replace(/^import[\s\S]*?;\n/gm, "").replace(/^export /gm, "");
+    .replace(/^import[\s\S]*?;\n/gm, "").replace(/^export (?:default )?/gm, "");
   return new Function("deps", "Date", `const { ${Object.keys(deps).join(",")} } = deps;\n${source}\nreturn {${names.join(",")}};`)(deps, clock);
 }
+
+test("sidebar mode routes the navigation keys to workspace tabs or native Agent order", async () => {
+  let tab = "spaces";
+  const calls = [];
+  const { WorkspaceStatus } = await moduleAt("../mods/xmux-status/main.js", ["WorkspaceStatus"], {
+    View: class {}, shared: () => ({ tab }), run: (...args) => calls.push(args),
+  });
+  const status = new WorkspaceStatus();
+  status.crossTab = direction => calls.push(["cross-tab", direction]);
+  status.navigate(-1);
+  tab = "agents";
+  status.navigate(-1);
+  status.navigate(1);
+  assert.deepEqual(calls, [["cross-tab", -1], ["agent.prev"], ["agent.next"]]);
+});
+
+test("attention follows sidebar order and waits for every blocked Agent to clear", async () => {
+  const agents = [
+    { address: "done", status: "done" },
+    { address: "a", status: "blocked" },
+    { address: "b", status: "blocked" },
+  ];
+  const child = { address: "child", parent: "b", state: "live", status: "blocked" };
+  const order = ["done", "b", "a"];
+  const calls = [];
+  const { WorkspaceStatus } = await moduleAt("../mods/xmux-status/main.js", ["WorkspaceStatus"], {
+    View: class {}, agents: () => agents, terminals: () => [child], shared: () => ({ order }),
+    run: (_command, { terminal }) => calls.push(terminal), notify: ({ title }) => calls.push(title),
+  });
+  const status = new WorkspaceStatus();
+  status.focusAttention();
+  status.focusAttention();
+  agents[2].status = "working";
+  status.focusAttention();
+  child.status = "idle";
+  status.focusAttention();
+  agents[1].status = "idle";
+  status.focusAttention();
+  agents[0].status = "idle";
+  status.focusAttention();
+  assert.deepEqual(calls, ["b", "b", "child", "a", "done", "No agents need attention"]);
+});
 
 function deferred() {
   let resolve, reject;

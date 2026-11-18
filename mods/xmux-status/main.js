@@ -1,6 +1,6 @@
 import { View, div, svg } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { spaces, agents, focused, theme, run, window, keys, nextCommand } from "herdr";
+import { spaces, agents, terminals, focused, theme, run, shared, notify, window, keys, nextCommand } from "herdr";
 import { openTerminalTab, splitTerminal } from "./shared/context.js";
 import { ReopenTab } from "./reopen.js";
 import { QuickDialog } from "./quick-dialog.js";
@@ -17,13 +17,52 @@ export default class WorkspaceStatus extends View {
         if (command === "new-terminal") openTerminalTab();
         else if (command.startsWith("split-right")) splitTerminal("right", command.split(":")[1]);
         else if (command.startsWith("split-down")) splitTerminal("down", command.split(":")[1]);
-        else if (command === "cross-tab-next") this.crossTab(1);
-        else if (command === "cross-tab-prev") this.crossTab(-1);
+        else if (command === "cross-tab-next") this.navigate(1);
+        else if (command === "cross-tab-prev") this.navigate(-1);
+        else if (command === "focus-attention") this.focusAttention();
         else if (command === "reopen-closed") this.reopenTab.reopen();
         else if (command === "quick-dialog") cx.spawn(async () => this.quickDialog.toggle());
         else if (command === "close-current") this.quickDialog.closeCurrent();
       }
     });
+  }
+
+  navigate(direction) {
+    if (shared("xmux-sidebar.navigation")?.tab === "agents")
+      run(direction > 0 ? "agent.next" : "agent.prev");
+    else this.crossTab(direction);
+  }
+
+  focusAttention() {
+    const list = agents();
+    const byAddress = new Map(list.map((agent) => [agent.address, agent]));
+    const children = new Map();
+    for (const terminal of terminals()) {
+      if (terminal.state !== "live" || !terminal.parent || byAddress.has(terminal.address)) continue;
+      const siblings = children.get(terminal.parent) ?? [];
+      siblings.push(terminal);
+      children.set(terminal.parent, siblings);
+    }
+
+    const published = shared("xmux-sidebar.navigation")?.order ?? [];
+    const order = [...new Set([...published, ...byAddress.keys()])];
+    const ordered = [];
+    const seen = new Set();
+    const append = (agent) => {
+      if (seen.has(agent.address)) return;
+      seen.add(agent.address);
+      ordered.push(agent);
+      for (const child of children.get(agent.address) ?? []) append(child);
+    };
+    for (const address of order) {
+      const agent = byAddress.get(address);
+      if (agent) append(agent);
+    }
+
+    const target = ordered.find((agent) => agent.status === "blocked" || agent.status === "error")
+      ?? ordered.find((agent) => byAddress.has(agent.address) && agent.status === "done");
+    if (target) run("agent.focus", { terminal: target.address });
+    else notify({ title: "No agents need attention", level: "info" });
   }
 
   crossTab(direction) {

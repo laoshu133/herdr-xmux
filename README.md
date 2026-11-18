@@ -54,7 +54,7 @@ cd ~/works/herdr-xmux
 
 The installer links the layout, theme, and XMux mods into
 `~/.config/herdr-app`, backs up replaced XMux files under `retired/`, checks
-the mods, adds terminal-directory shortcuts in `layout:XMux` (preserving custom
+the mods, adds shortcuts in `layout:XMux` (preserving custom
 bindings), and switches the running app to the `XMux` layout. Set
 `HERDR_APP_HOME` for another configuration directory or `HERDR_BIN` when
 `herdr-app` is not on `PATH`.
@@ -108,6 +108,7 @@ These mappings belong in the personal Mackup/iCloud-managed `keys.json`:
 ```text
 cmd-ctrl-up      -> xmux-status.cross-tab-prev
 cmd-ctrl-down    -> xmux-status.cross-tab-next
+cmd-ctrl-j       -> xmux-status.focus-attention
 cmd-ctrl-t       -> xmux-tabs.new-menu
 cmd-shift-t      -> xmux-status.reopen-closed
 cmd-r (terminal) -> send form feed, matching Ghostty
@@ -118,8 +119,14 @@ cmd-d (XMux)     -> xmux-status.split-right
 cmd-shift-d (XMux) -> xmux-status.split-down
 ```
 
-The XMux bindings belong in a `layout:XMux` section. `close-current` closes
-the quick terminal when it has keyboard focus, otherwise the current tab.
+The XMux bindings belong in a `layout:XMux` section. Ctrl+Cmd+Up/Down follows
+the selected sidebar tab. Spaces cycles through workspace tabs and Agents
+cycles through the ordered Agent list. Ctrl+Cmd+J jumps to the first blocked
+Agent in list order. After all blocked Agents clear, it jumps to the first
+unread completed Agent or shows a notification when there is no pending work.
+
+`close-current` closes the quick terminal when it has keyboard focus,
+otherwise it closes the current tab.
 The terminal starts in the focused local terminal's directory, or the local
 home directory when working remotely. Drag its title bar to move it; its
 position is remembered. Switching layouts hides it; returning to XMux and
