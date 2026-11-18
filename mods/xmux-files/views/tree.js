@@ -1,4 +1,4 @@
-// The sidebar: the folder tree, and the box for a prompt to an agent.
+// The sidebar folder tree.
 import { div } from "gpui-kit";
 import { h_flex, v_flex, Scrollbar } from "gpui-base";
 import { panes, shared, spaces, theme } from "herdr";
@@ -6,8 +6,7 @@ import { fileMenuTarget, showFileMenu } from "../shared/file-menu.js";
 import { baseName, holdsChange, TOTAL_ROWS } from "../files/model.js";
 import { viewerEntries } from "../actions/open.js";
 import { foundEditors } from "../actions/outside.js";
-import { agentName } from "../actions/agents.js";
-import { TEXT, Badge, Button, Chevron, FileIcon, Icon, markColor, IconButton, Message, Panel, PanelHeader, StatusLetter, TextBox } from "./ui.js";
+import { TEXT, Badge, Chevron, FileIcon, Icon, markColor, IconButton, Message, Panel, PanelHeader, StatusLetter } from "./ui.js";
 
 const INDENT = 14;
 const FOLDER_LABEL = 28;
@@ -148,49 +147,6 @@ export const treeMethods = {
     });
   },
 
-  composerView() {
-    const t = theme();
-    const { target, address } = this.composer;
-    const agent = this.agentAt(address);
-    return v_flex()
-      .id("files-composer")
-      .flex_none()
-      .p(10)
-      .gap(8)
-      .border_t(1)
-      .border_color(t.border)
-      .child(
-        div()
-          .truncate()
-          .text_size(TEXT.small)
-          .font_medium()
-          .child(agent ? `Send to ${agentName(agent)}` : "That agent is no longer running."),
-      )
-      .child(div().truncate().text_size(TEXT.caption).text_color(t.dim).child(target.relative))
-      .child(TextBox({ id: "files-prompt", state: this.editor, label: "What should it do?" }))
-      .child(
-        h_flex()
-          .gap(8)
-          .justify_end()
-          .child(
-            Button({
-              id: "files-prompt-close",
-              label: "Close",
-              onClick: (cx) => this.closeComposer(cx),
-            }),
-          )
-          .child(
-            Button({
-              id: "files-prompt-send",
-              label: this.sending ? "Sending…" : "Send",
-              primary: true,
-              disabled: this.sending || !agent || !this.editor.value().trim(),
-              onClick: (cx) => this.sendToAgent(cx),
-            }),
-          ),
-      );
-  },
-
   sidebarView() {
     const t = theme();
     const failure = this.error ?? this.treeError ?? shared("xmux-files.error");
@@ -218,7 +174,6 @@ export const treeMethods = {
         ),
     );
     if (failure) root.child(Message(failure, true));
-    if (this.notice) root.child(Message(this.notice));
     const body = v_flex().id("files-list").flex_1().min_h(0).min_w(0).overflow_y_scroll().p(6);
     if (!this.root) body.child(Message("Select a space to see its files."));
     else {
@@ -229,7 +184,6 @@ export const treeMethods = {
       if (rows.length >= TOTAL_ROWS) body.child(Message(`Showing the first ${TOTAL_ROWS} rows.`));
     }
     root.child(v_flex().relative().flex_1().min_h(0).min_w(0).child(body).child(Scrollbar.vertical("files-list").mode("scrolling").absolute().inset_0()));
-    if (this.composer) root.child(this.composerView());
     return root;
   },
 };

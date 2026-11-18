@@ -20,16 +20,6 @@ export function remoteInfo(remote) {
   return { host, path, repo: segments.join("/"), remote: value };
 }
 
-export function providerFromRemote(remote) {
-  const parsed = remoteInfo(remote);
-  if (!parsed) return null;
-  if (parsed.host === "github.com" || /^github(?:\.com)?-|^ssh\.github\.com$/.test(parsed.host))
-    return { kind: "github", host: "github.com", repo: parsed.repo.split("/").slice(0, 2).join("/") };
-  if (parsed.host === "gitlab.com" || parsed.host.includes("gitlab"))
-    return { kind: "gitlab", host: parsed.host, repo: parsed.repo };
-  return null;
-}
-
 export function repositoryFromRemote(remote) {
   const parsed = remoteInfo(remote);
   if (!parsed) throw new Error("The remote does not contain a valid repository address.");
@@ -47,38 +37,43 @@ async function runCli(command, args, options) {
   for (const candidate of candidates) {
     for (let attempt = 0; attempt < 2; attempt++) {
       try { result = await exec(candidate.startsWith("~/") ? `${home()}/${candidate.slice(2)}` : candidate, args, options); }
-      catch (error) { result = { code: 127, stdout: "", stderr: String(error.message ?? error) }; }
+      catch (error) {
+        const message = String(error.message ?? error);
+        result = { code: missingExecutable(message) ? 127 : 1, stdout: "", stderr: message };
+      }
       if (result.code === 0 || !/\bEOF\b|connection (?:reset|closed|aborted)|timed out|timeout|502|503|504/i.test(outputText(result))) break;
     }
-    if (result.code !== 127 && !/no such file|os error 2|command not found|enoent/i.test(outputText(result))) return result;
+    if (result.code !== 127 && !missingExecutable(outputText(result))) return result;
   }
   return result;
 }
 
-function missing(text) {
-  return /command not found|not found|is not installed|no such file/i.test(text);
+function missingExecutable(text) {
+  return /os error 2|\benoent\b|command not found|cannot run[^\n]*no such file|^\S+: (?:not found|no such file or directory)$/im.test(text);
 }
 
-function authFailure(text) {
-  return /not logged|not authenticated|authentication required|unauthorized|forbidden|401|403|authentication failed|http 4\d\d/i.test(text);
-}
-
-function jsonRepo(stdout, kind, fallback) {
+function jsonRepo(stdout, kind) {
   try {
-    const row = JSON.parse(stdout || "null") || {};
-    const value = kind === "github"
-      ? row.nameWithOwner
-      : row.path_with_namespace || row.name_with_namespace || row.path || row.name;
-    if (typeof value === "string" && value.trim()) return value.trim().replace(/^\/+|\/+$/g, "").replace(/\.git$/, "");
+    const row = JSON.parse(stdout);
+    const repo = kind === "github" ? row?.full_name : row?.path_with_namespace;
+    const parts = typeof repo === "string" ? repo.split("/") : [];
+    if (parts.length >= 2 && parts.every((part) => SEGMENT_PATTERN.test(part))) return repo;
   } catch {
-    // The CLI may return a useful success response without JSON on older versions.
+    // Repository endpoints return a provider-specific JSON document.
   }
-  return fallback;
+  return null;
 }
 
-function githubRepo(parsed, value) {
-  const parts = String(value).split("/").filter(Boolean);
-  return parts.length >= 2 ? parts.slice(-2).join("/") : parsed.repo;
+const localOptions = { on: null, timeout: 8000 };
+
+function probeCli(tool) {
+  return cachedQuery(JSON.stringify(["provider-cli", tool]), 600000,
+    () => runCli(tool, ["--version"], localOptions));
+}
+
+function probeLogin(tool, host) {
+  return cachedQuery(JSON.stringify(["provider-login", tool, host]), 60000,
+    () => runCli(tool, ["auth", "status", "--hostname", host], localOptions));
 }
 
 export function resolveProvider(remote, options = {}) {
@@ -86,29 +81,34 @@ export function resolveProvider(remote, options = {}) {
   if (!parsed) return Promise.reject(new Error("The remote does not contain a valid repository address."));
   const tools = { github: options.tools?.github || "gh", gitlab: options.tools?.gitlab || "glab" };
   const configured = configuredProvider(parsed, options.hosts);
-  const key = JSON.stringify(["provider", parsed.host, parsed.repo, tools, configured]);
+  const key = JSON.stringify(["provider:v2", parsed.host, parsed.repo, tools, configured]);
   return cachedQuery(key, 600000, async () => {
-    // Public and recognizable hosts already identify the provider. The first
-    // real read verifies access; discovery should not spend another API call.
-    const recognized = configured ?? providerFromRemote(remote);
-    if (recognized) return recognized;
+    if (configured) return configured;
     const target = `${parsed.host}/${parsed.repo}`;
-    const preferred = providerFromRemote(remote)?.kind === "gitlab" ? ["gitlab", "github"] : ["github", "gitlab"];
-    const failures = [];
-    for (const kind of preferred) {
-      const tool = kind === "github" ? tools.github || "gh" : tools.gitlab || "glab";
-      const args = kind === "github" ? ["repo", "view", target, "--json", "nameWithOwner"] : ["repo", "view", parsed.remote, "--output", "json"];
-      // Hosting credentials belong to this computer, including remote checkouts.
-      const reply = await runCli(tool, args, { on: null, timeout: 8000 });
-      if (reply.code === 0) {
-        const repo = jsonRepo(reply.stdout, kind, parsed.repo);
-        return { kind, host: parsed.host, repo: kind === "github" ? githubRepo(parsed, repo) : repo };
-      }
-      const text = outputText(reply);
-      failures.push({ text, missing: missing(text), auth: authFailure(text) });
+    const checked = await Promise.all(Object.entries(tools).map(async ([kind, tool]) =>
+      ({ kind, tool, version: await probeCli(tool) })));
+    const available = checked.filter(({ version }) => version.code === 0);
+    if (!available.length) {
+      if (checked.every(({ version }) => version.code === 127 || missingExecutable(outputText(version))))
+        throw new Error("Neither gh nor glab CLI is installed. Install one and log in before opening this panel.");
+      throw new Error("Could not run either hosting CLI. Check the CLI path and permissions, then refresh.");
     }
-    if (failures.every((f) => f.missing)) throw new Error("Neither gh nor glab CLI is installed. Install one and log in before opening this panel.");
-    if (failures.some((f) => f.auth)) throw new Error(`Neither authenticated gh nor glab can access ${target}. Run the matching CLI's auth login, then refresh.`);
+    const logins = await Promise.all(available.map(async (cli) =>
+      ({ ...cli, auth: await probeLogin(cli.tool, parsed.host) })));
+    // Check repository access only through a CLI logged into the exact remote host.
+    const repositories = await Promise.all(logins.filter(({ auth }) => auth.code === 0).map(async ({ kind, tool }) => {
+      const endpoint = kind === "github" ? `repos/${parsed.repo}` : `projects/${encodeURIComponent(parsed.repo)}`;
+      const reply = await runCli(tool, ["api", "--hostname", parsed.host, endpoint], localOptions);
+      return { kind, reply, repo: reply.code === 0 ? jsonRepo(reply.stdout, kind) : null };
+    }));
+    const matches = repositories.filter(({ repo }) => repo);
+    if (matches.length === 1) return { kind: matches[0].kind, host: parsed.host, repo: matches[0].repo };
+    if (matches.length > 1) throw new Error(`Both hosting CLIs can access ${target}. Configure a host mapping for this remote.`);
+    const failed = [...logins.map(({ auth }) => auth), ...repositories.map(({ reply }) => reply)];
+    if (failed.some((reply) => /timed? out|timeout|network is unreachable|no route to host/i.test(outputText(reply))))
+      throw new Error(`Could not reach ${parsed.host} from this computer. Check the network connection for this Git host, then refresh.`);
+    if (!repositories.length)
+      throw new Error(`No installed hosting CLI is authenticated for ${parsed.host}. Run the matching CLI's auth login or configure an SSH host mapping, then refresh.`);
     throw new Error(`Neither gh nor glab could access ${target}. Check the repository address and CLI authorization.`);
   }, { share: true });
 }

@@ -166,8 +166,10 @@ Stage/unstage/commit and manual refresh invalidate relevant repository reads.
 PRs/Issues refresh only when visible and idle (60s by default). Lists and branch
 queries cache for 60s; details/jobs for 30s; repository discovery for 5min and
 provider detection for 10min. Equivalent in-flight reads join one request.
-Known hosts do not need a separate provider API probe. Small discovery metadata
-is shared across mod instances; API payloads stay in bounded runtime memory.
+Provider discovery checks which hosting CLIs are installed and authenticated for
+the Git remote's host, then verifies the repository through the matching CLI.
+Small discovery metadata is shared across mod instances; API payloads stay in
+bounded runtime memory.
 Failed reads back off for 5–60s, keeping existing content. Read CLI calls have
 explicit timeouts. Hosting requests use local gh/glab authentication even for a
 remote checkout; Git operations run on that checkout's machine.
@@ -244,6 +246,6 @@ Optional `settings` in `mods/xmux-branch-pr/mod.json`:
 ```
 
 The example maps `git@git-company:group/subgroup/project.git` to the GitLab API
-at `code.company.com`. Ordinary github.com/gitlab.com remotes require no
-mapping; unknown hosts are probed with the locally authenticated CLI. Log in
-with `gh auth login --hostname HOST` or `glab auth login --hostname HOST`.
+at `code.company.com`. Use a mapping when the Git remote uses an SSH alias or an
+SSH host that differs from the API host. Log in to the API host with
+`gh auth login --hostname HOST` or `glab auth login --hostname HOST`.

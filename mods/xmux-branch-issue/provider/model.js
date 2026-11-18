@@ -1,4 +1,4 @@
-export { remoteInfo, providerFromRemote, repositoryFromRemote, resolveProvider } from "../shared/provider.js";
+export { remoteInfo, repositoryFromRemote, resolveProvider } from "../shared/provider.js";
 
 export const providerName = (p) => p?.kind === 'gitlab' ? 'GitLab' : 'GitHub';
 export const providerUrl = (repo, p) => `https://${p?.host || (p?.kind === 'gitlab' ? 'gitlab.com' : 'github.com')}/${repo}`;

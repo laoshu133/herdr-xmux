@@ -4,6 +4,7 @@ import { v_flex, h_flex, Scrollbar } from "gpui-base";
 import { theme } from "herdr";
 import { issueStats, linkedPRs, person, workflowOrder, providerName } from "../provider/model.js";
 import { agentName } from "../actions/agents.js";
+import { chatItems } from "../shared/chat-menu.js";
 import {
   TEXT,
   codeFont,
@@ -89,20 +90,10 @@ export const detailMethods = {
 
   // Starting work, handing it on and undoing a link: what's done to the issue itself.
   actionsMenu(issue) {
-    const agents = this.agentChoices();
+    const chat = chatItems({ url: issue.url });
     const choices = [
       { id: "start", label: "Create worktree" },
-      ...agents.flatMap((a, i) => [
-        { id: `agent:${a.address}`, label: `Send to ${agentName(a)}`, divided: i === 0 },
-        ...(this.spawnRun(a)
-          ? [{ id: `agent:spawn:${a.address}`, label: `Send to ${agentName(a)} (spawn)` }]
-          : []),
-      ]),
-      ...this.newAgentChoices().map((a, i) => ({
-        id: `agent:${a.address}`,
-        label: `Send to ${agentName(a)}`,
-        divided: i === 0,
-      })),
+      ...chat.map((item, index) => ({ ...item, divided: index === 0 })),
       ...(this.linkedIdentifiers.has(issue.identifier)
         ? [{ id: "unlink", label: "Unlink from this branch", divided: true }]
         : []),
@@ -116,7 +107,7 @@ export const detailMethods = {
       onChoose: (id, cx) => {
         if (id === "start") this.startWork(cx);
         else if (id === "unlink") this.unlinkIssue(issue.identifier, cx);
-        else this.compose("agent", null, null, cx, { target: id.slice("agent:".length) });
+        else chat.find((item) => item.id === id)?.run(cx);
       },
     });
   },

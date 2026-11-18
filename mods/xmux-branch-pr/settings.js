@@ -62,5 +62,13 @@ export async function loadSettings(name, defaults) {
   } catch (e) {
     problems.push(`mod.json could not be read: ${e.message}`);
   }
-  return { settings: mergeSettings(defaults, given, problems), problems };
+  const settings = mergeSettings(defaults, given, problems);
+  const local = await readTextFile(`${appHome()}/data/${name}/settings.json`).catch(() => null);
+  if (!local) return { settings, problems };
+  try {
+    return { settings: mergeSettings(settings, JSON.parse(local), problems), problems };
+  } catch (e) {
+    problems.push(`Local settings.json could not be read: ${e.message}`);
+    return { settings, problems };
+  }
 }

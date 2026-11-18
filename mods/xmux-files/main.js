@@ -1,5 +1,5 @@
 // XMux Files: a read-only file browser. One class plays three roles, each its own copy:
-//   the sidebar        the tree, and the box for a prompt to an agent
+//   the sidebar        the tree
 //   a viewer           a file in a centre tab
 //   the menu           a popup at the pointer on right-click
 // shared("xmux-files.*") connects them. The class is built from:
@@ -7,19 +7,18 @@
 //   files/file-icons.js   Better Icons' pictures, when it's installed
 //   actions/open.js       opening tabs, and handing a file to XMux Changes
 //   actions/outside.js    code editors, Finder
-//   actions/agents.js     sending a file to an agent
+//   views/chat-picker.js  choosing a chat
 //   actions/menus.js      popup menus
 //   views/tree.js, viewer.js, context-menu.js   the drawing
 // files/model.js says what the data means; views/ui.js holds every look.
 import { View } from "gpui-kit";
-import { TextareaState } from "gpui-base";
 import { appHome, exec, hc, nextCommand, props, setShared, shared, spaces, readTextFile, writeTextFile } from "herdr";
 import { loadSettings, duration } from "./settings.js";
 import { followFileIcons } from "./files/file-icons.js";
 import { readMethods } from "./files/reads.js";
 import { openMethods, restoreViewerSource } from "./actions/open.js";
 import { outsideMethods } from "./actions/outside.js";
-import { agentMethods } from "./actions/agents.js";
+import { chatPickerMethods } from "./views/chat-picker.js";
 import { menuMethods } from "./actions/menus.js";
 import { treeMethods } from "./views/tree.js";
 import { viewerMethods } from "./views/viewer.js";
@@ -36,9 +35,9 @@ class XmuxFiles extends View {
     this.mode = p.mode ?? "sidebar";
     if (this.mode === "menu") {
       this.menuTarget = p.target;
-      this.menuSpace = p.target?.space ?? spaces().find((s) => s.active)?.id;
       return;
     }
+    if (this.mode === "chat-picker") return this.initChatPicker(p.target, cx);
     this.menuFocus = cx.focus_handle();
     // XMux Tabs draws this on a file's tab.
     setShared("mod-icons", {
@@ -114,12 +113,8 @@ class XmuxFiles extends View {
     this.entries = new Map();
     this.folders = new Set();
     this.marks = {};
-    this.editor = TextareaState.new({ placeholder: "What should it do with this?", rows: 3 });
-    this.editor.on("change", (_e, cx) => cx.notify());
     this.refresh(cx);
     this.findChanges(cx);
-    this.findNewAgents(this.on, cx);
-    this.agentsOn = this.on ?? null;
     cx.timer.every(SYNC_MS, (cx) => this.follow(cx));
     cx.spawn(async (cx) => {
       const { settings, problems } = await loadSettings("xmux-files", DEFAULT_SETTINGS);
@@ -132,21 +127,15 @@ class XmuxFiles extends View {
     });
   }
 
-  // Keeps up with the focused pane, tabs closing, and questions left by the menu.
+  // Keeps up with the focused pane and tabs closing.
   follow(cx) {
-    if (this.placeKey() !== this.key) {
-      this.refresh(cx);
-      if ((this.on ?? null) !== this.agentsOn) {
-        this.agentsOn = this.on ?? null;
-        this.findNewAgents(this.on, cx);
-      }
-    }
+    if (this.placeKey() !== this.key) this.refresh(cx);
     this.pruneViewers();
-    this.syncCompose(cx);
   }
 
   render() {
     if (this.mode === "menu") return this.menuView();
+    if (this.mode === "chat-picker") return this.chatPickerView();
     if (this.mode === "viewer") return this.viewerView();
     return this.sidebarView();
   }
@@ -157,7 +146,7 @@ Object.assign(
   readMethods,
   openMethods,
   outsideMethods,
-  agentMethods,
+  chatPickerMethods,
   menuMethods,
   treeMethods,
   viewerMethods,

@@ -3,7 +3,7 @@ import { div } from "gpui-kit";
 import { v_flex } from "gpui-base";
 import { closeOverlay, props, shared, setShared, theme } from "herdr";
 import { foundEditors } from "../actions/outside.js";
-import { agentName } from "../actions/agents.js";
+import { chatItems } from "../shared/chat-menu.js";
 import { TEXT } from "./ui.js";
 
 export const contextMenuMethods = {
@@ -11,28 +11,21 @@ export const contextMenuMethods = {
     const local = !target.on;
     const editors = local ? foundEditors().filter((e) => e.bundle !== "com.microsoft.VSCode") : [];
     const file = { path: target.path, root: target.dir ? target.path : target.root, on: target.on, space: target.space };
-    const groups = [];
-    if (!target.dir)
-      groups.push([
+    const groups = [[
+      ...(!target.dir ? [
         { id: "open", label: "Open", run: (cx) => this.openFile(file, cx) },
-        { id: "vscode", label: "Open in VS Code", run: () => this.openInVsCode(file) },
-      ]);
-    groups.push([
+      ] : []),
+      { id: "vscode", label: "Open in VS Code", run: () => this.openInVsCode(file) },
       ...editors.map((e) => ({
         id: `editor-${e.bundle}`,
         label: `Open in ${e.name}`,
         run: () => this.openInEditor(e, target.path),
       })),
-      ...(target.dir
-        ? [{ id: "vscode", label: "Open in VS Code", run: () => this.openInVsCode(file) }]
-        : []),
       ...(local && !target.dir
         ? [{ id: "default", label: "Open in default app", run: () => this.openWithDefault(target.path) }]
         : []),
-      ...(local
-        ? [{ id: "reveal", label: "Show in Finder", run: () => this.revealInFinder(target.path) }]
-        : []),
-    ]);
+    ]];
+    if (local) groups.push([{ id: "reveal", label: "Show in Finder", run: () => this.revealInFinder(target.path) }]);
     if (!target.dir && target.changed && shared("xmux-files.has-changes"))
       groups.push([{ id: "diff", label: "Show diff", run: (cx) => this.showDiff(target, cx) }]);
     groups.push([
@@ -48,30 +41,7 @@ export const contextMenuMethods = {
       },
       { id: "copy-path", label: "Copy full path", run: (cx) => cx.write_to_clipboard(target.path) },
     ]);
-    const running = this.spaceAgents(this.menuSpace);
-    groups.push([
-      ...running.flatMap((a) => [
-        {
-          id: `agent-${a.address}`,
-          label: `Send to ${agentName(a)}`,
-          run: () => this.askForPrompt(target, a.address),
-        },
-        ...(this.spawnRun(a)
-          ? [
-              {
-                id: `agent-spawn-${a.address}`,
-                label: `Send to ${agentName(a)} (spawn)`,
-                run: () => this.askForPrompt(target, `spawn:${a.address}`),
-              },
-            ]
-          : []),
-      ]),
-      ...this.newAgentChoices().map((a) => ({
-        id: `agent-${a.address}`,
-        label: `Send to ${agentName(a)}`,
-        run: () => this.askForPrompt(target, a.address),
-      })),
-    ]);
+    groups.push(chatItems(target));
     return groups.filter((group) => group.length);
   },
 
@@ -102,9 +72,9 @@ export const contextMenuMethods = {
             .flex()
             .items_center()
             .rounded(5)
-            .cursor_pointer()
-            .hover((s) => s.bg(t.hover))
-            .on_click(async (_e, cx) => {
+          .when(item.disabled, (el) => el.text_color(t.dim))
+          .when(!item.disabled, (el) => el.cursor_pointer().hover((s) => s.bg(t.hover))
+          .on_click(async (_e, cx) => {
               if (this.menuBusy) return;
               this.menuBusy = true;
               const overlay = props()?.overlay;
@@ -113,7 +83,7 @@ export const contextMenuMethods = {
               try { await item.run(cx); }
               catch (error) { setShared("xmux-files.error", String(error.message ?? error)); }
               finally { closeOverlay(overlay); }
-            })
+          }))
             .child(div().truncate().child(item.label)),
         );
     });

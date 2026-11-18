@@ -2,7 +2,7 @@
 import { providerUrl, remoteInfo, requestNumber, requestShort, requestName } from "./provider.js";
 const pad = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
-export { providerFromRemote, resolveProvider, providerName, providerUrl, providerProblem, providerIcon, requestNumber, requestShort, requestName, requestKey } from "./provider.js";
+export { resolveProvider, providerName, providerUrl, providerProblem, providerIcon, requestNumber, requestShort, requestName, requestKey } from "./provider.js";
 
 export const repoUrl = (repo, provider) => providerUrl(repo, provider);
 export const who = (comment) => comment?.author?.login ?? "deleted user";

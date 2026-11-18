@@ -3,7 +3,7 @@ import { div } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { theme } from "herdr";
 import { commentThreads, timeAgo, who } from "../provider/model.js";
-import { agentName } from "../actions/agents.js";
+import { chatItems } from "../shared/chat-menu.js";
 import { TEXT, Button, IconButton, Markdown, Message, TextBox, TextButton } from "./ui.js";
 
 export const commentMethods = {
@@ -47,7 +47,6 @@ export const commentMethods = {
 
   threadActions(root, thread) {
     const last = thread[thread.length - 1];
-    const context = thread.map((c) => `${who(c)}: ${c.body}`).join("\n\n");
     return h_flex()
       .gap(2)
       .items_center()
@@ -61,18 +60,8 @@ export const commentMethods = {
         }),
       )
       .child(div().flex_1())
-      .child(
-        this.agentButton({
-          id: `issue-agent-send-${root.id}`,
-          label: "Send to agent",
-          send: (agent, cx) =>
-            this.compose("agent", root.id, context, cx, {
-              entry: root.id,
-              url: last.url,
-              target: agent.address,
-            }),
-        }),
-      );
+      .children(chatItems({ url: last.url || this.issue.url }).map((item) =>
+        TextButton({ id: `issue-${root.id}-${item.id}`, label: item.label, disabled: item.disabled, onClick: item.run })));
   },
 
   commentsView(body, issue) {
@@ -131,29 +120,12 @@ export const commentMethods = {
   },
 
   composerView() {
-    const t = theme();
     const composer = this.composer;
-    const toAgent = composer.kind === "agent";
-    const agent = toAgent ? this.agentAt(this.target) : null;
     const box = v_flex()
       .id(`issue-composer-${composer.entry ?? "general"}`)
       .gap(8)
       .min_w(0);
-    if (toAgent)
-      box.child(
-        div()
-          .text_size(TEXT.small)
-          .font_medium()
-          .child(agent ? `Send to ${agentName(agent)}` : "That agent is no longer running."),
-      );
-    if (agent?.status === "working" && !agent.spawn)
-      box.child(
-        div()
-          .text_size(TEXT.caption)
-          .text_color(t.dim)
-          .child("It's busy; your message waits in its session."),
-      );
-    const disabled = this.mutating || !this.editor.value().trim() || (toAgent && !agent);
+    const disabled = this.mutating || !this.editor.value().trim();
     return box
       .child(TextBox({ id: "issue-inline-input", state: this.editor, label: "Message" }))
       .child(
@@ -171,10 +143,10 @@ export const commentMethods = {
           .child(
             Button({
               id: "issue-submit",
-              label: this.mutating ? "Sending…" : toAgent ? "Send" : "Reply",
+              label: this.mutating ? "Sending…" : "Reply",
               primary: true,
               disabled,
-              onClick: (cx) => (toAgent ? this.sendAgent(cx) : this.mutate(cx)),
+              onClick: (cx) => this.mutate(cx),
             }),
           ),
       );

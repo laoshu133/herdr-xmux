@@ -1,6 +1,6 @@
 // Local apps open local paths directly. VS Code can also open a path through
 // the SSH connection already configured for a Herdr machine.
-import { appHome, exec, hc, knownAgents, readTextFile, setShared, shared, window } from "herdr";
+import { appHome, exec, hc, readTextFile, setShared, shared, window } from "herdr";
 import { EDITORS } from "../files/model.js";
 
 const FOUND = "xmux-files.editors";
@@ -49,21 +49,6 @@ export const outsideMethods = {
         () => null,
       );
       setShared("xmux-files.has-changes", Boolean(manifest));
-      cx.notify();
-    });
-  },
-
-  findNewAgents(on, cx) {
-    cx.spawn(async (cx) => {
-      try {
-        const known = await knownAgents({ on: on ?? null });
-        setShared(
-          "xmux-files.new-agents",
-          known.filter((a) => a.installed).map((a) => ({ key: a.key, name: a.name, run: a.run })),
-        );
-      } catch {
-        setShared("xmux-files.new-agents", []);
-      }
       cx.notify();
     });
   },

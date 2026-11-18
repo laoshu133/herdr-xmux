@@ -1,7 +1,7 @@
 // Handing work to the agents: who is on this PR, and what to send them.
 import { h_flex } from "gpui-base";
 import { agents, panes, hc, knownAgents, run } from "herdr";
-import { agentsOnPR, commentMessage, fixCheckMessage, unresolvedMessage } from "../github/model.js";
+import { agentsOnPR, fixCheckMessage } from "../github/model.js";
 import { SmallButton, MenuButton } from "../views/ui.js";
 
 const NEW_AGENT = "new:";
@@ -202,20 +202,4 @@ export const agentMethods = {
     this.deliver(agent, fixCheckMessage(this.pr, this.pr.repository, check), cx);
   },
 
-  sendUnresolved(agent, cx) {
-    this.deliver(agent, unresolvedMessage(this.pr), cx);
-  },
-
-  sendAgent(cx) {
-    const composer = this.composer;
-    const agent = this.agentAt(this.target);
-    const draft = this.draftKey;
-    const message = commentMessage(this.pr, this.pr.repository, composer, this.editor.value());
-    this.deliver(agent, message, cx, () => {
-      if (this.composer !== composer) return;
-      localStorage.removeItem(draft);
-      this.composer = null;
-      this.draftKey = null;
-    });
-  },
 };

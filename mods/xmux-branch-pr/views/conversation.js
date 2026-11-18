@@ -5,12 +5,11 @@ import { theme } from "herdr";
 import {
   authorsOf,
   conversationEntries,
-  entryContext,
   timeAgo,
   unresolvedThreads,
   who,
 } from "../github/model.js";
-import { agentName } from "../actions/agents.js";
+import { chatItems } from "../shared/chat-menu.js";
 import {
   TEXT,
   Button,
@@ -99,13 +98,10 @@ export const conversationMethods = {
           .gap(6)
           .items_center()
           .when(unresolved > 0, (el) =>
-            el.child(
-              this.agentButton({
-                id: "pr-send-unresolved",
-                label: `Send ${unresolved} to agent`,
-                send: (agent, cx) => this.sendUnresolved(agent, cx),
-              }),
-            ),
+            el.children(chatItems({
+              url: [...new Set(unresolvedThreads(pr).map((thread) => thread.comments[0]?.url || pr.url))].join(" "),
+            }).map((item) => TextButton({ id: `pr-unresolved-${item.id}`, label: item.label,
+              disabled: item.disabled, onClick: item.run }))),
           ),
       );
   },
@@ -186,18 +182,8 @@ export const conversationMethods = {
           onClick: (cx) => this.mutate(thread.isResolved ? "reopen" : "resolve", cx, thread.id),
         }),
       );
-    return row.child(div().flex_1()).child(
-      this.agentButton({
-        id: `pr-agent-send-${entry.id}`,
-        label: "Send to agent",
-        send: (agent, cx) =>
-          this.compose("agent", thread?.id ?? entry.id, entryContext(entry), cx, {
-            entry: entry.id,
-            url,
-            target: agent.address,
-          }),
-      }),
-    );
+    return row.child(div().flex_1()).children(chatItems({ url }).map((item) =>
+      TextButton({ id: `pr-${entry.id}-${item.id}`, label: item.label, disabled: item.disabled, onClick: item.run })));
   },
 
   conversationView(body, pr) {
@@ -301,29 +287,12 @@ export const conversationMethods = {
   },
 
   composerView() {
-    const t = theme();
     const composer = this.composer;
-    const toAgent = composer.kind === "agent";
-    const agent = toAgent ? this.agentAt(this.target) : null;
     const box = v_flex()
       .id(`pr-composer-${composer.entry ?? "general"}`)
       .gap(8)
       .min_w(0);
-    if (toAgent)
-      box.child(
-        div()
-          .text_size(TEXT.small)
-          .font_medium()
-          .child(agent ? `Send to ${agentName(agent)}` : "That agent is no longer running."),
-      );
-    if (agent?.status === "working" && !agent.spawn)
-      box.child(
-        div()
-          .text_size(TEXT.caption)
-          .text_color(t.dim)
-          .child("It's busy; your message waits in its session."),
-      );
-    const disabled = this.mutating || !this.editor.value().trim() || (toAgent && !agent);
+    const disabled = this.mutating || !this.editor.value().trim();
     return box
       .child(TextBox({ id: "pr-inline-input", state: this.editor, label: "Message" }))
       .child(
@@ -341,11 +310,10 @@ export const conversationMethods = {
           .child(
             Button({
               id: "pr-submit",
-              label: this.mutating ? "Sending…" : toAgent ? "Send" : "Reply",
+              label: this.mutating ? "Sending…" : "Reply",
               primary: true,
               disabled,
-              onClick: (cx) =>
-                toAgent ? this.sendAgent(cx) : this.mutate(composer.kind, cx, composer.thread),
+              onClick: (cx) => this.mutate(composer.kind, cx, composer.thread),
             }),
           ),
       );

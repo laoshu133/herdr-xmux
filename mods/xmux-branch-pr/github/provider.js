@@ -1,4 +1,4 @@
-export { remoteInfo, providerFromRemote, repositoryFromRemote, resolveProvider, requestNumber, requestName, requestShort, requestKey, repositoryKey, requestRef, encodeBinding, decodeBinding } from "../shared/provider.js";
+export { remoteInfo, repositoryFromRemote, resolveProvider, requestNumber, requestName, requestShort, requestKey, repositoryKey, requestRef, encodeBinding, decodeBinding } from "../shared/provider.js";
 
 export function providerName(provider) {
   return provider?.kind === "gitlab" ? "GitLab" : "GitHub";

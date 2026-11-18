@@ -218,18 +218,49 @@ test("an Issue viewer response cannot change identity after navigation", async (
   assert.equal(state.teams, undefined);
 });
 
-test("recognized hosts require no provider API probe; custom hosts share their probe", async () => {
+test("provider discovery checks installed CLIs, their host login, and the repository", async () => {
   const cache = await cacheFixture();
   const calls = [];
   const f = await moduleAt("../lib/xmux/provider.js", ["resolveProvider"], { ...cache,
-    exec: async (tool, args, options) => { calls.push({ tool, args, options });
-      return { code: 0, stdout: '{"nameWithOwner":"a/b"}' }; },
+    exec: async (tool, args, options) => {
+      calls.push({ tool, args, options });
+      if (args[0] === "--version") return { code: 0, stdout: tool };
+      if (args[0] === "auth") return { code: tool === "gh" ? 0 : 1 };
+      return { code: 0, stdout: '{"full_name":"A/B"}' };
+    },
   });
-  assert.equal((await f.resolveProvider("git@gitlab.com:a/b.git")).kind, "gitlab");
+  const explicit = { remote: "git-alias", kind: "gitlab", host: "code.example" };
+  assert.deepEqual(await f.resolveProvider("git@git-alias:a/b.git", { hosts: [explicit] }),
+    { kind: "gitlab", host: "code.example", repo: "a/b" });
   assert.equal(calls.length, 0);
-  await Promise.all([f.resolveProvider("git@code.example:a/b.git"), f.resolveProvider("git@code.example:a/b.git")]);
-  assert.equal(calls.length, 1);
-  assert.equal(calls[0].options.on, null);
+  const remote = "git@gitlab.example:a/b.git";
+  const resolved = { kind: "github", host: "gitlab.example", repo: "A/B" };
+  assert.deepEqual(await Promise.all([f.resolveProvider(remote), f.resolveProvider(remote)]), [resolved, resolved]);
+  assert.deepEqual(calls.filter(({ args }) => args[0] === "--version").map(({ tool }) => tool), ["gh", "glab"]);
+  assert.equal(calls.filter(({ args }) => args.join(" ") === "auth status --hostname gitlab.example").length, 2);
+  const queries = calls.filter(({ args }) => args[0] === "api");
+  assert.deepEqual(queries.map(({ tool, args }) => [tool, ...args]), [["gh", "api", "--hostname", "gitlab.example", "repos/a/b"]]);
+  assert.ok(calls.every(({ options }) => options.on === null));
+});
+
+test("GitLab discovery uses exact host authorization and verifies the full project namespace", async () => {
+  const cache = await cacheFixture();
+  const calls = [];
+  const { resolveProvider } = await moduleAt("../lib/xmux/provider.js", ["resolveProvider"], {
+    ...cache, home: () => "/home/me",
+    exec: async (tool, args) => {
+      calls.push([tool, ...args]);
+      if (tool.endsWith("gh")) return { code: 127 };
+      if (args[0] === "api") return { code: 0, stdout: '{"path_with_namespace":"group/sub/project"}' };
+      return { code: 0 };
+    },
+  });
+  assert.deepEqual(await resolveProvider("ssh://git@code.example/group/sub/project.git"),
+    { kind: "gitlab", host: "code.example", repo: "group/sub/project" });
+  assert.deepEqual(calls.filter((call) => call[1] !== "--version"), [
+    ["glab", "auth", "status", "--hostname", "code.example"],
+    ["glab", "api", "--hostname", "code.example", "projects/group%2Fsub%2Fproject"],
+  ]);
 });
 
 test("changes in decorations keep Editor selection state; wrap recreates its immutable config", async () => {
@@ -388,19 +419,23 @@ test("Files menu replaces Open in new tab with one shared VS Code action", async
   const f = await fileMenuFixture(), calls = [];
   const { contextMenuMethods } = await moduleAt("../mods/xmux-files/views/context-menu.js", ["contextMenuMethods"], {
     foundEditors: () => [{ bundle: "com.microsoft.VSCode", name: "VS Code" }, { bundle: "other", name: "Other Editor" }],
-    shared: () => false,
+    shared: () => false, chatItems: () => [{ label: "Add to chat" }, { label: "Add to other chat" }],
   });
   const state = { menuSpace: "owner", spaceAgents: () => [], newAgentChoices: () => [],
     openInVsCode: file => calls.push(file) };
   for (const on of [null, "server"]) {
     const target = f.fileMenuTarget({ path: "/repo/a.js", root: "/repo", on });
-    const items = contextMenuMethods.menuItems.call(state, target).flat();
+    const groups = contextMenuMethods.menuItems.call(state, target);
+    const items = groups.flat();
     assert.equal(items.some(i => i.label === "Open in new tab"), false);
     const vscode = items.filter(i => i.label === "Open in VS Code");
     assert.equal(vscode.length, 1);
     vscode[0].run();
     assert.deepEqual(calls.at(-1), { path: target.path, root: target.root, on, space: "owner" });
     assert.equal(items.some(i => i.label === "Open in Other Editor"), !on);
+    assert.equal(groups[0].some(i => i.label === "Open in VS Code"), true);
+    if (!on) assert.deepEqual(groups[1].map(i => i.label), ["Show in Finder"]);
+    assert.deepEqual(groups.at(-1).map(i => i.label), ["Add to chat", "Add to other chat"]);
   }
 });
 
@@ -466,6 +501,7 @@ test("the popup stays alive until an asynchronous editor launch completes", asyn
   const handlers = [], closed = [], gate = deferred();
   const node = () => new Proxy({}, { get: (_t, k) => (...args) => {
     if (k === "on_click") handlers.push(args[0]);
+    if (k === "when" && args[0]) args[1](node());
     return node();
   } });
   const { contextMenuMethods } = await moduleAt("../mods/xmux-files/views/context-menu.js", ["contextMenuMethods"], {
@@ -479,4 +515,85 @@ test("the popup stays alive until an asynchronous editor launch completes", asyn
   gate.resolve();
   await running;
   assert.deepEqual(closed, ["popup"]);
+});
+
+test("chat references follow the receiving pane, space and machine", async () => {
+  const agent = { address: "remote/t1", pane: "pane", space: "remote/one" };
+  const state = { focus: { pane: "pane", terminal: agent.address } };
+  const terminal = { address: agent.address, state: "live" };
+  const overlays = [], commands = [], calls = [], sleeps = [];
+  const { chatItems, chatText } = await moduleAt("../lib/xmux/chat-menu.js", ["chatItems", "chatText"], {
+    focused: () => state.focus, agents: () => [agent], terminals: () => [terminal],
+    panes: () => [{ pane: agent.pane, cwd: "/project/src" }],
+    spaces: () => [{ id: agent.space, machine: "remote" }], openOverlay: o => overlays.push(o),
+    run: command => commands.push(command),
+    exec: async (...args) => { calls.push(args); return { code: 0, stdout: "Mi-Local\n" }; },
+  });
+  const target = { space: "remote/one", on: "remote", root: "/project", path: "/project/docs/file name.md" };
+  assert.equal(chatText(target, agent), " ../docs/file name.md ");
+  assert.equal(chatText({ ...target, space: "remote/two" }, agent), " /project/docs/file name.md ");
+  assert.equal(chatText({ ...target, on: "mi-ber" }, agent), " mi-ber:/project/docs/file name.md ");
+  assert.equal(chatText({ url: "https://example.org/issue" }, agent), " https://example.org/issue ");
+  chatItems(target)[1].run();
+  assert.deepEqual(overlays[0].props, { mode: "chat-picker", target });
+  assert.ok(overlays[0].width > overlays[0].height);
+  state.focus = { pane: "shell", terminal: "t0" };
+  assert.equal(chatItems(target)[0].disabled, true);
+  state.focus = { pane: agent.pane, terminal: agent.address };
+  let clipboard = "previous";
+  const cx = {
+    read_from_clipboard: () => clipboard,
+    write_to_clipboard: text => { clipboard = text; },
+    spawn: task => task(cx),
+    sleep: () => new Promise(resolve => sleeps.push(resolve)),
+  };
+  const pending = chatItems(target)[0].run(cx);
+  assert.deepEqual(commands, ["terminal.paste"]);
+  assert.equal(clipboard, " ../docs/file name.md ");
+  sleeps.shift()();
+  await pending;
+  assert.equal(clipboard, "previous");
+
+  const localToRemote = chatItems({ ...target, on: null })[0].run(cx);
+  await Promise.resolve();
+  assert.deepEqual(calls, [["hostname", [], { on: null, timeout: 2000 }]]);
+  assert.equal(clipboard, " Mi-Local:/project/docs/file name.md ");
+  sleeps.shift()();
+  await localToRemote;
+  assert.equal(clipboard, "previous");
+});
+
+test("chat picker defaults to the current space and navigates both columns with the keyboard", async () => {
+  const chats = [
+    { address: "remote/t1", space: "remote/earlier" },
+    { address: "remote/t2", space: "remote/current" },
+    { address: "remote/t3", space: "remote/current" },
+  ];
+  const spaces = [
+    { id: "remote/earlier", machine: "remote" },
+    { id: "remote/current", machine: "remote", active: true },
+  ];
+  const closed = [], accepted = [];
+  const { chatPickerMethods } = await moduleAt("../mods/xmux-files/views/chat-picker.js", ["chatPickerMethods"], {
+    agents: () => chats, machines: () => [{ name: "remote" }], spaces: () => spaces,
+    closeOverlay: id => closed.push(id), ScrollHandle: { new: () => ({ scroll_to_item() {} }) },
+  });
+  const picker = { ...chatPickerMethods, addToPickedChat: agent => accepted.push(agent.address) };
+  const cx = { focus_handle: () => ({ focus() {} }), stop_propagation() {}, notify() {} };
+  picker.initChatPicker({}, cx);
+  assert.equal(picker.chatAgent, "remote/t2");
+  assert.equal(picker.chatColumn, "agent");
+  const key = (name, selected = chats[1]) => picker.chatPickerKey({ key: name }, cx, [null, "remote"], chats, selected, "dialog");
+  key("down");
+  assert.equal(picker.chatAgent, "remote/t3");
+  key("enter", chats[2]);
+  assert.deepEqual(accepted, ["remote/t3"]);
+  key("left");
+  assert.equal(picker.chatColumn, "machine");
+  key("up");
+  assert.equal(picker.chatMachine, null);
+  key("enter");
+  assert.equal(picker.chatColumn, "agent");
+  key("escape");
+  assert.deepEqual(closed, ["dialog"]);
 });

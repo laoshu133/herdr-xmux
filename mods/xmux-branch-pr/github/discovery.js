@@ -63,7 +63,7 @@ export const discoveryMethods = {
   },
 
   async detectRepo(sp) {
-    return cachedQuery(JSON.stringify(["detect-repo", sp.machine ?? null, sp.folder, this.settings.tools ?? null, this.settings.hosts ?? []]), 300000, async () => {
+    return cachedQuery(JSON.stringify(["detect-repo:v2", sp.machine ?? null, sp.folder, this.settings.tools ?? null, this.settings.hosts ?? []]), 300000, async () => {
       const options = { cwd: sp.folder, on: sp.machine, timeout: 5000, tools: this.settings.tools, hosts: this.settings.hosts };
       const remote = (name) => exec("git", ["remote", "get-url", name], options);
       let result = await remote("upstream");
@@ -172,7 +172,7 @@ export const discoveryMethods = {
   },
 
   async discoverRemotes(sp) {
-    return cachedQuery(JSON.stringify(["remotes", sp.machine ?? null, sp.folder, this.settings.tools ?? null, this.settings.hosts ?? []]), 300000, async () => {
+    return cachedQuery(JSON.stringify(["remotes:v2", sp.machine ?? null, sp.folder, this.settings.tools ?? null, this.settings.hosts ?? []]), 300000, async () => {
       const top = await exec("git", ["rev-parse", "--show-toplevel"], { cwd: sp.folder, on: sp.machine, timeout: 5000 });
       if (top.code === 0) rememberRoot(sp.folder, top.stdout.trim(), sp.machine);
       const options = { cwd: sp.folder, on: sp.machine, timeout: 5000, tools: this.settings.tools, hosts: this.settings.hosts };

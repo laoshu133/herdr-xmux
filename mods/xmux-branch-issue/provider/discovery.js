@@ -18,7 +18,6 @@ export const discoveryMethods = {
     // Invalidate in-flight requests before clearing space-specific state.
     this.spaceKey = key;
     this.sp = sp;
-    this.loadNewAgents(sp, cx);
     this.providerToken = (this.providerToken ?? 0) + 1;
     this.providerLoading = false;
     this.me = null;
@@ -60,7 +59,7 @@ export const discoveryMethods = {
   },
 
   async detectProvider(sp) {
-    return cachedQuery(JSON.stringify(["issue-provider", sp.machine ?? null, sp.folder, this.settings.tools ?? null]), 300000, async () => {
+    return cachedQuery(JSON.stringify(["issue-provider:v2", sp.machine ?? null, sp.folder, this.settings.tools ?? null]), 300000, async () => {
       const top = await exec("git", ["rev-parse", "--show-toplevel"], { cwd: sp.folder, on: sp.machine, timeout: 5000 });
       if (top.code === 0) rememberRoot(sp.folder, top.stdout.trim(), sp.machine);
       const options = { cwd: sp.folder, on: sp.machine, timeout: 5000, tools: this.settings.tools };

@@ -122,7 +122,14 @@ export class PRStatusObserver {
       throw new Error("Cannot read PR association");
     const preferences = await cachedQuery("pr-cli-settings", PR_POLL_MS, async () => {
       const raw = await readTextFile(`${appHome()}/mods/xmux-branch-pr/mod.json`);
-      return JSON.parse(raw || "{}").settings || {};
+      const settings = JSON.parse(raw || "{}").settings || {};
+      const local = await readTextFile(`${appHome()}/data/xmux-branch-pr/settings.json`).catch(() => null);
+      if (!local) return settings;
+      const overrides = JSON.parse(local);
+      return {
+        tools: { ...settings.tools, ...overrides?.tools },
+        hosts: Array.isArray(overrides?.hosts) ? overrides.hosts : settings.hosts,
+      };
     });
     const tools = preferences.tools || {};
     const binding = decodeBinding(association.stdout?.trim());
