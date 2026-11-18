@@ -2,7 +2,7 @@
 // each space's tabs and agents under it, and Agents. With `combined: false` in the settings: the
 // two lists one above the other, as two blocks of this mod would draw them.
 import { v_flex, h_flex } from "gpui-base";
-import { agents, focused, theme, setAgentOrder, setShared } from "herdr";
+import { agents, focused, nextCommand, theme, setAgentOrder, setShared } from "herdr";
 import { Spaces } from "./spaces.js";
 import { Agents } from "./agents.js";
 import { TEXT, Badge, Rail } from "./ui.js";
@@ -17,6 +17,13 @@ export class Lists {
     this.agents.init(props, cx);
     const saved = localStorage.getItem("lists.tab");
     this.tab = TABS.includes(saved) ? saved : "spaces";
+    cx.spawn(async (cx) => {
+      for (;;) {
+        const command = await nextCommand();
+        if (command === "show-spaces") this.pick("spaces", cx);
+        else if (command === "show-agents") this.pick("agents", cx);
+      }
+    });
   }
 
   pick(tab, cx) {

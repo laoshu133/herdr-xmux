@@ -106,6 +106,8 @@ frames, and a 0.5px outer gutter when the right panel is closed.
 These mappings belong in the personal Mackup/iCloud-managed `keys.json`:
 
 ```text
+cmd-ctrl-left    -> xmux-sidebar.show-spaces
+cmd-ctrl-right   -> xmux-sidebar.show-agents
 cmd-ctrl-up      -> xmux-status.cross-tab-prev
 cmd-ctrl-down    -> xmux-status.cross-tab-next
 cmd-ctrl-j       -> xmux-status.focus-attention
@@ -119,9 +121,10 @@ cmd-d (XMux)     -> xmux-status.split-right
 cmd-shift-d (XMux) -> xmux-status.split-down
 ```
 
-The XMux bindings belong in a `layout:XMux` section. Ctrl+Cmd+Up/Down follows
-the selected sidebar tab. Spaces cycles through workspace tabs and Agents
-cycles through the ordered Agent list. Ctrl+Cmd+J jumps to the first blocked
+The XMux bindings belong in a `layout:XMux` section. Ctrl+Cmd+Left selects
+Spaces and Ctrl+Cmd+Right selects Agents. Ctrl+Cmd+Up/Down cycles through
+workspace tabs in Spaces and the ordered Agent list in Agents.
+Ctrl+Cmd+J jumps to the first blocked
 Agent in list order. After all blocked Agents clear, it jumps to the first
 unread completed Agent or shows a notification when there is no pending work.
 

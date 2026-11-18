@@ -12,6 +12,8 @@ const mappings = {
   "cmd-t": ["xmux-status.new-terminal", "tab.new"],
   "cmd-d": ["xmux-status.split-right", "pane.split:right"],
   "cmd-shift-d": ["xmux-status.split-down", "pane.split:down"],
+  "cmd-ctrl-left": ["xmux-sidebar.show-spaces"],
+  "cmd-ctrl-right": ["xmux-sidebar.show-agents"],
   "cmd-ctrl-up": ["xmux-status.cross-tab-prev"],
   "cmd-ctrl-down": ["xmux-status.cross-tab-next"],
   "cmd-ctrl-j": ["xmux-status.focus-attention"],
