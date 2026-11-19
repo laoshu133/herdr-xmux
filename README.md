@@ -35,7 +35,7 @@ preserves custom bindings.
 | Shortcut | Action |
 | --- | --- |
 | `Cmd+P` | Open Go to. |
-| `Shift+Cmd+←/→/↑/↓` | Focus a split pane in that direction. |
+| `Option+Cmd+←/→/↑/↓` | Focus a split pane in that direction. |
 | `Ctrl+Cmd+←/→` | Select Spaces / Agents. |
 | `Ctrl+Cmd+↑/↓` | Cycle through tabs in Spaces or Agents in list order. |
 | `Ctrl+Cmd+J` | Focus the first blocked or errored Agent, then the first unread completed Agent once all blockers clear. Herdr notifies you when none need attention. |

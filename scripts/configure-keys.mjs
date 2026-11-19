@@ -20,7 +20,6 @@ const mappings = {
   "cmd-ctrl-j": ["xmux-status.focus-attention"],
 };
 const directions = ["left", "right", "up", "down"];
-for (const direction of directions) mappings[`cmd-shift-${direction}`] = [`pane.go:${direction}`];
 let changed = false;
 for (const [key, [action, builtin]] of Object.entries(mappings)) {
   const existing = section[key] ?? keys.global?.[key];
@@ -33,14 +32,24 @@ for (const [key, [action, builtin]] of Object.entries(mappings)) {
   changed = true;
 }
 for (const direction of directions) {
-  const oldKey = `cmd-alt-${direction}`;
+  const optionKey = `cmd-alt-${direction}`;
+  const shiftKey = `cmd-shift-${direction}`;
   const action = `pane.go:${direction}`;
-  const newKey = `cmd-shift-${direction}`;
-  if ((section[newKey] ?? keys.global?.[newKey]) !== action) continue;
-  if ((section[oldKey] ?? keys.global?.[oldKey]) !== action) continue;
-  // Suppress the former pane binding in XMux while preserving other layouts.
-  section[oldKey] = "terminal";
-  changed = true;
+  const optionBinding = section[optionKey] ?? keys.global?.[optionKey];
+  // The old installer passed Option through to the terminal when Shift moved focus.
+  const oldOverride = section[optionKey] === "terminal" &&
+    (section[shiftKey] ?? keys.global?.[shiftKey]) === action;
+  if (optionBinding === undefined || oldOverride) {
+    section[optionKey] = action;
+    changed = true;
+  } else if (optionBinding !== action) {
+    console.warn(`Kept personal XMux binding ${optionKey}: ${optionBinding}`);
+    continue;
+  }
+  if (section[shiftKey] === action) {
+    delete section[shiftKey];
+    changed = true;
+  }
 }
 if (changed) {
   const backup = process.argv[3] ?? join(home, "retired", `xmux-keys-${Date.now()}`);
