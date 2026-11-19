@@ -1,3 +1,4 @@
+// Generated from lib/xmux/context.js. Run node scripts/sync-common.mjs.
 import { spaces, panes, focused, shared, setShared, run } from "herdr";
 
 const WORKSPACES = "xmux.workspace-contexts";

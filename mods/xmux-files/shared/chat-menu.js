@@ -1,3 +1,4 @@
+// Generated from lib/xmux/chat-menu.js. Run node scripts/sync-common.mjs.
 import { agents, exec, focused, notify, openOverlay, panes, run, spaces, terminals } from "herdr";
 
 export function currentChat() {

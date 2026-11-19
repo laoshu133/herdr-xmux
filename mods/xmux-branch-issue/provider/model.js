@@ -1,23 +1,3 @@
-export { remoteInfo, repositoryFromRemote, resolveProvider } from "../shared/provider.js";
-
-export const providerName = (p) => p?.kind === 'gitlab' ? 'GitLab' : 'GitHub';
-export const providerUrl = (repo, p) => `https://${p?.host || (p?.kind === 'gitlab' ? 'gitlab.com' : 'github.com')}/${repo}`;
-export function providerProblem(message, provider) {
-  const text = String(message ?? '');
-  if (/no github or gitlab remote|github or gitlab repository required|unsupported repository|valid repository address/i.test(text)) return {
-    kind: 'unsupported', title: 'GitHub or GitLab repository required',
-    detail: 'Open a folder with a repository remote that your authenticated gh or glab CLI can access.', command: 'git remote -v',
-  };
-  const tool = provider?.kind === 'gitlab' ? 'glab' : 'gh';
-  const name = providerName(provider);
-  if (/command not found|is not installed/i.test(text)) return {
-    kind: 'missing', title: `${name} CLI is not installed`, detail: `Install ${tool}, run ${tool} auth login, then try again.`, command: `${tool} auth login`, url: tool === 'glab' ? 'https://gitlab.com/gitlab-org/cli' : 'https://cli.github.com',
-  };
-  if (/not logged|not authenticated|authentication required|unauthorized|401|authentication failed|neither authenticated gh nor glab/i.test(text)) return {
-    kind: 'logged-out', title: 'Git hosting CLI is not logged in', detail: "This panel verifies the repository with gh and glab using their local login state. Run the matching CLI's auth login, then try again.", command: `${tool} auth login`, url: tool === 'glab' ? 'https://gitlab.com/gitlab-org/cli' : 'https://cli.github.com',
-  };
-  return null;
-}
 const pad = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 export const person = (user) => user?.displayName || user?.name || user?.login || user?.username || "";
@@ -54,24 +34,6 @@ export function timeAgo(iso, now = Date.now()) {
   if (minutes < 60) return `${minutes}m ago`;
   if (minutes < 1440) return `${Math.floor(minutes / 60)}h ago`;
   return `${Math.floor(minutes / 1440)}d ago`;
-}
-
-// The helper's plain words for a key that can't be used at all, which is worth a
-// whole panel rather than a line: nothing else can work until it's fixed.
-export function keyProblem(message) {
-  return providerProblem(message);
-}
-
-// Whether a mod's block is on screen: every parent shown, and the chosen child of
-// any stack. Timers keep running while hidden, so this saves API quota.
-// shortcut: any shown copy counts for all copies; only matters with two copies in one layout.
-export function panelShown(node, mod) {
-  if (!node || node.hidden) return false;
-  if (node.content?.mod === mod) return true;
-  const children = node.children ?? [];
-  if (node.type !== "stack") return children.some((child) => panelShown(child, mod));
-  const active = children.find((child) => child.id === node.active) ?? children[0];
-  return panelShown(active, mod);
 }
 
 // ── Lists ───────────────────────────────────────────────────────────────────

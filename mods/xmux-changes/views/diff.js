@@ -7,7 +7,7 @@ import { TEXT, SIZE, codeFont, codeSize, FileIcon, Panel, PaneBar, DiffStat, Mes
 import { cachedQuery } from "../shared/query-cache.js";
 import { CodeRows } from "../shared/code-viewer.js";
 import { fileMenuTarget, showFileMenu } from "../shared/file-menu.js";
-import { fileIcon, isLight } from "../file-icons.js";
+import { fileIcon, isLight } from "../shared/file-icons.js";
 
 const TAB_OPEN_TIMEOUT_MS = 1500;
 const NO_PATCH = "No text diff: the hosting service omitted this binary, empty or very large diff.";

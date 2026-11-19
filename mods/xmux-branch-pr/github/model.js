@@ -1,34 +1,13 @@
 // What GitHub/GitLab answers mean, as plain functions: no Herdr, no drawing.
-import { providerUrl, remoteInfo, requestNumber, requestShort, requestName } from "./provider.js";
+import { requestNumber, requestShort, requestName } from "../shared/provider.js";
 const pad = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
-export { resolveProvider, providerName, providerUrl, providerProblem, providerIcon, requestNumber, requestShort, requestName, requestKey } from "./provider.js";
-
-export const repoUrl = (repo, provider) => providerUrl(repo, provider);
 export const who = (comment) => comment?.author?.login ?? "deleted user";
-
-export function repositoryFromRemote(remote) {
-  const parsed = remoteInfo(remote);
-  if (!parsed) throw new Error("The remote does not contain a valid repository address.");
-  return parsed.repo;
-}
 
 // Text needs three characters to be worth searching; a PR number needs none of that.
 export function searchQuery(text) {
   const query = text.trim();
   return query.length >= 3 || /^[#!]?[1-9][0-9]*$/.test(query) ? query : "";
-}
-
-// Whether a mod's block is on screen: every parent shown, and the chosen child of
-// any stack. Timers keep running while hidden, so this saves GitHub's API quota.
-// shortcut: any shown copy counts for all copies; only matters with two copies in one layout.
-export function panelShown(node, mod) {
-  if (!node || node.hidden) return false;
-  if (node.content?.mod === mod) return true;
-  const children = node.children ?? [];
-  if (node.type !== "stack") return children.some((child) => panelShown(child, mod));
-  const active = children.find((child) => child.id === node.active) ?? children[0];
-  return panelShown(active, mod);
 }
 
 // What a person wants from a failed step: `gh` starts each line with the job, the
@@ -413,29 +392,3 @@ export function commentMessage(pr, repo, composer, prompt) {
 // ── Files ───────────────────────────────────────────────────────────────────
 
 // Folders first, then files, omitting what's inside a closed folder. A copy of Better
-// Changes' fileTree, keyed on GitHub's `filename`: one mod can't import another.
-export function fileTree(files, closed = new Set()) {
-  const root = { dirs: new Map(), files: [] };
-  for (const file of files) {
-    const parts = file.filename.split("/");
-    parts.pop();
-    let node = root;
-    let path = "";
-    for (const part of parts) {
-      path = path ? `${path}/${part}` : part;
-      if (!node.dirs.has(part)) node.dirs.set(part, { path, dirs: new Map(), files: [] });
-      node = node.dirs.get(part);
-    }
-    node.files.push(file);
-  }
-  const rows = [];
-  function walk(node, depth) {
-    for (const [name, directory] of [...node.dirs].sort(([a], [b]) => a.localeCompare(b))) {
-      rows.push({ kind: "folder", name, path: directory.path, depth });
-      if (!closed.has(directory.path)) walk(directory, depth + 1);
-    }
-    for (const file of node.files) rows.push({ kind: "file", file, depth });
-  }
-  walk(root, 0);
-  return rows;
-}

@@ -4,7 +4,7 @@
 import { div, image, svg } from "gpui-kit";
 import { h_flex, v_flex, Popover, Textarea, TextView } from "gpui-base";
 import { theme, settings } from "herdr";
-import { fileIcon, isLight } from "../files/file-icons.js";
+import { fileIcon, isLight } from "../shared/file-icons.js";
 
 // Plain px: Herdr scales a mod's sizes by zoom itself.
 export const TEXT = { badge: 10, caption: 11, small: 12, tab: 12.8, body: 13 };

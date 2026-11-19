@@ -1,3 +1,4 @@
+// Generated from lib/xmux/query-cache.js. Run node scripts/sync-common.mjs.
 import { shared, setShared } from "herdr";
 
 // Per-runtime promises coalesce concurrent reads. Small metadata results are

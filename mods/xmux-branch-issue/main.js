@@ -6,30 +6,30 @@
 //   actions/changes.js    state, assignee and comments
 //   actions/agents.js     who is on an issue, and handing work to them
 //   actions/worktrees.js  starting work: an issue's checkouts
-//   actions/menus.js      the popup menus
+//   shared/menu.js        the popup menus
 //   views/list.js, detail.js, comments.js, worktrees.js   the drawing
 // provider/model.js says what GitHub/GitLab's answers mean; views/ui.js holds every look.
 // Git runs on the checkout's machine. GitHub/GitLab requests go through a local helper that
 // reads gh/glab CLI; the mod never sees the key.
 import { View } from "gpui-kit";
 import { activeWorkspace, workspaceKey } from "./shared/context.js";
-import { configureQueries } from "./shared/query-cache.js";
+import { configureQueries, panelShown } from "./shared/query-cache.js";
 import { InputState, TextareaState } from "gpui-base";
 import { nextCommand, layout } from "herdr";
-import { loadSettings, duration } from "./settings.js";
+import { loadSettings, duration } from "./shared/settings.js";
 import { savedMethods } from "./state/saved.js";
 import { discoveryMethods } from "./provider/discovery.js";
 import { readMethods } from "./provider/reads.js";
 import { changeMethods } from "./actions/changes.js";
 import { agentMethods } from "./actions/agents.js";
 import { worktreeMethods } from "./actions/worktrees.js";
-import { menuMethods } from "./actions/menus.js";
+import { menuMethods } from "./shared/menu.js";
 import { listMethods } from "./views/list.js";
 import { detailMethods } from "./views/detail.js";
 import { commentMethods } from "./views/comments.js";
 import { worktreeViewMethods } from "./views/worktrees.js";
-import { providerProblem, panelShown } from "./provider/model.js";
-import { Panel } from "./views/ui.js";
+import { providerProblem } from "./shared/provider.js";
+import { Panel, Select } from "./views/ui.js";
 
 const CONTEXT_POLL_MS = 1000;
 const REFRESH_INTERVAL_MS = 60000;
@@ -183,7 +183,7 @@ Object.assign(
   changeMethods,
   agentMethods,
   worktreeMethods,
-  menuMethods,
+  menuMethods(Select),
   listMethods,
   detailMethods,
   commentMethods,

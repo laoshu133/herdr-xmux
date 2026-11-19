@@ -1,12 +1,40 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import * as hostingCli from "../lib/xmux/hosting-cli.js";
 
 async function moduleAt(path, names, deps = {}, clock = Date) {
   const source = (await readFile(new URL(path, import.meta.url), "utf8"))
     .replace(/^import[\s\S]*?;\n/gm, "").replace(/^export (?:default )?/gm, "");
   return new Function("deps", "Date", `const { ${Object.keys(deps).join(",")} } = deps;\n${source}\nreturn {${names.join(",")}};`)(deps, clock);
 }
+
+test("PRs and the sidebar use the same CLI and host overrides", async () => {
+  const files = new Map([
+    ["/app/mods/xmux-branch-pr/mod.json", JSON.stringify({ settings: {
+      refresh: { every: "25s" }, tools: { github: "/global/gh", gitlab: "/global/glab" }, hosts: [],
+    } })],
+    ["/app/data/xmux-branch-pr/settings.json", JSON.stringify({
+      tools: { gitlab: "/local/glab" }, hosts: [{ remote: "git-alias", kind: "gitlab", host: "code.example" }],
+    })],
+  ]);
+  const { loadSettings } = await moduleAt("../lib/xmux/settings.js", ["loadSettings"], {
+    appHome: () => "/app", readTextFile: async (path) => files.get(path) ?? null,
+  });
+  const { loadPRSettings } = await moduleAt("../lib/xmux/pr-settings.js", ["loadPRSettings"], { loadSettings });
+  const panel = await loadPRSettings({ refresh: { every: "60s" } });
+  const sidebar = await loadPRSettings();
+  assert.deepEqual(panel.problems, []);
+  assert.deepEqual(panel.settings.refresh, { every: "25s" });
+  assert.deepEqual(panel.settings.tools, { github: "/global/gh", gitlab: "/local/glab" });
+  assert.deepEqual(sidebar.settings, { tools: panel.settings.tools, hosts: panel.settings.hosts });
+  assert.equal(sidebar.settings.hosts[0].host, "code.example");
+
+  files.set("/app/data/xmux-branch-pr/settings.json", '{"hosts":{} }');
+  const invalid = await loadPRSettings();
+  assert.ok(invalid.problems.includes("hosts should be an array"));
+  assert.deepEqual(invalid.settings.hosts, []);
+});
 
 test("the tab bar reserves only the space still occupied by macOS controls", async () => {
   const { tabBarInset } = await moduleAt("../mods/xmux-tabs/views/tab-bar.js", ["tabBarInset"]);
@@ -313,7 +341,7 @@ test("an Issue viewer response cannot change identity after navigation", async (
 test("provider discovery checks installed CLIs, their host login, and the repository", async () => {
   const cache = await cacheFixture();
   const calls = [];
-  const f = await moduleAt("../lib/xmux/provider.js", ["resolveProvider"], { ...cache,
+  const f = await moduleAt("../lib/xmux/provider.js", ["resolveProvider"], { ...cache, ...hostingCli, home: () => "/home/me",
     exec: async (tool, args, options) => {
       calls.push({ tool, args, options });
       if (args[0] === "--version") return { code: 0, stdout: tool };
@@ -339,7 +367,7 @@ test("GitLab discovery uses exact host authorization and verifies the full proje
   const cache = await cacheFixture();
   const calls = [];
   const { resolveProvider } = await moduleAt("../lib/xmux/provider.js", ["resolveProvider"], {
-    ...cache, home: () => "/home/me",
+    ...cache, ...hostingCli, home: () => "/home/me",
     exec: async (tool, args) => {
       calls.push([tool, ...args]);
       if (tool.endsWith("gh")) return { code: 127 };
@@ -458,6 +486,39 @@ test("shell titles and active/focused pane selection retain their behavior", asy
   assert.equal(automaticTabTitle({ name: "1" }, a), "zsh ~/project");
   assert.equal(tabLead({ id: "tab", active: true }, [a, b], a), a);
   assert.equal(tabLead({ id: "tab", active: false }, [a, b], a), b);
+});
+
+test("an exited Pi agent returns to the live shell title even with a saved session label", async () => {
+  const agentProgram = { name: "Pi", key: "pi", agent: true };
+  const shellProgram = { name: "zsh", key: "shell", shell: true, agent: false };
+  const pane = { terminal: "t1", title: "π - project", app: "pi", program: agentProgram };
+  const record = {
+    address: "t1", title: pane.title, program: agentProgram, report: { app: "pi" },
+    labels: { "heeler.session": JSON.stringify({ file: "/sessions/old.jsonl" }) },
+    foreground: { cwd: "/home/me/project" },
+  };
+  const { automaticTabTitle, floatingTerminalTitle } = await moduleAt(
+    "../lib/xmux/tab-title.js", ["automaticTabTitle", "floatingTerminalTitle"],
+    {
+      home: () => "/home/me",
+      terminals: () => [record],
+      readTextFile: async () => JSON.stringify({ type: "message", message: { role: "user", content: "Old task" } }),
+      setShared: () => {},
+    },
+  );
+  const tab = { name: "2" };
+  automaticTabTitle(tab, pane);
+  await Promise.resolve();
+  assert.equal(automaticTabTitle(tab, pane), "Old task");
+
+  Object.assign(record, { title: "me@host: ~/project", program: shellProgram, report: null });
+  assert.equal(automaticTabTitle(tab, { ...pane, program: shellProgram }), "me@host: ~/project");
+  assert.equal(automaticTabTitle(tab, pane), "me@host: ~/project");
+  assert.equal(floatingTerminalTitle(record), "me@host: ~/project");
+
+  delete record.title;
+  assert.equal(automaticTabTitle(tab, pane), "zsh ~/project");
+  assert.equal(automaticTabTitle({ name: "My tab", named: true }, pane), "My tab");
 });
 
 test("SSH login, directory changes, and exit update both titles from Core", async () => {

@@ -2,7 +2,7 @@
 import { div } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar } from "gpui-base";
 import { theme } from "herdr";
-import { person, stateGroups, timeAgo, providerName } from "../provider/model.js";
+import { person, stateGroups, timeAgo } from "../provider/model.js";
 import {
   TEXT,
   Busy,

@@ -18,7 +18,7 @@ import {
 } from "herdr";
 import { TEXT, Icon, IconButton, GroupHeader, Menu, MenuLabel, MenuOption } from "./ui.js";
 import { scrollingScrollbar } from "./scrollbar.js";
-import { automaticTabTitle, tabLead } from "./tab-title.js";
+import { automaticTabTitle, tabLead } from "../shared/tab-title.js";
 
 import { narrow, toggleSidebar } from "./chrome.js";
 

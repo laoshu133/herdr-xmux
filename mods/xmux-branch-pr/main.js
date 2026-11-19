@@ -7,31 +7,32 @@
 //   actions/changes.js    merging, closing, reviews and comments
 //   actions/agents.js     who is on a PR, and handing work to them
 //   actions/worktrees.js  a PR's checkouts
-//   actions/menus.js      the popup menus
+//   shared/menu.js        the popup menus
 //   views/list.js, detail.js, conversation.js, checks.js, worktrees.js   the drawing
 //   views/files.js        the Files tab, and handing a file's diff to XMux Changes
 // github/model.js says what GitHub's answers mean; views/ui.js holds every look.
 import { View } from "gpui-kit";
 import { activeWorkspace, workspaceKey } from "./shared/context.js";
-import { configureQueries } from "./shared/query-cache.js";
+import { configureQueries, panelShown } from "./shared/query-cache.js";
 import { InputState, TextareaState } from "gpui-base";
 import { nextCommand, layout, readTextFile, appHome } from "herdr";
-import { loadSettings, duration } from "./settings.js";
+import { duration } from "./shared/settings.js";
+import { loadPRSettings, PR_HOSTING_DEFAULTS } from "./shared/pr-settings.js";
 import { savedMethods } from "./state/saved.js";
 import { discoveryMethods } from "./github/discovery.js";
 import { readMethods } from "./github/reads.js";
 import { changeMethods } from "./actions/changes.js";
 import { agentMethods } from "./actions/agents.js";
 import { worktreeMethods } from "./actions/worktrees.js";
-import { menuMethods } from "./actions/menus.js";
+import { menuMethods } from "./shared/menu.js";
 import { listMethods } from "./views/list.js";
 import { detailMethods } from "./views/detail.js";
 import { conversationMethods } from "./views/conversation.js";
 import { checksMethods } from "./views/checks.js";
 import { worktreeViewMethods } from "./views/worktrees.js";
 import { filesMethods } from "./views/files.js";
-import { panelShown, providerProblem } from "./github/model.js";
-import { Panel } from "./views/ui.js";
+import { providerProblem } from "./shared/provider.js";
+import { Panel, Select } from "./views/ui.js";
 
 const CONTEXT_POLL_MS = 1000;
 const REFRESH_INTERVAL_MS = 60000;
@@ -42,8 +43,7 @@ const DEFAULT_SETTINGS = {
   list: { page_size: 25, default: { tab: "all", state: "open" } },
   worktrees: { root: "~/.herdr/worktrees", open_with: "terminal" },
   logs: { keep_last: "60KB" },
-  tools: { github: "gh", gitlab: "glab" },
-  hosts: [],
+  ...PR_HOSTING_DEFAULTS,
 };
 
 class PullRequests extends View {
@@ -124,7 +124,7 @@ class PullRequests extends View {
   // Read the installed mod.json once; list defaults apply until a saved view exists.
   applySettings(cx) {
     cx.spawn(async (cx) => {
-      const { settings, problems } = await loadSettings("xmux-branch-pr", DEFAULT_SETTINGS);
+      const { settings, problems } = await loadPRSettings(DEFAULT_SETTINGS);
       this.settings = settings;
       this.settingsProblems = problems;
       // Only while nothing has been chosen yet, by a saved view or a click.
@@ -211,7 +211,7 @@ Object.assign(
   changeMethods,
   agentMethods,
   worktreeMethods,
-  menuMethods,
+  menuMethods(Select),
   listMethods,
   detailMethods,
   conversationMethods,

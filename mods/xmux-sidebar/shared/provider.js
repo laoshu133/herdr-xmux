@@ -1,9 +1,11 @@
-// Repository address parsing and CLI-backed provider detection shared by Branch PR.
+// Generated from lib/xmux/provider.js. Run node scripts/sync-common.mjs.
+// Repository address parsing and CLI-backed provider detection.
 // The Git remote supplies only the host and path. `gh`/`glab` authentication and
 // repository access decide which provider is actually usable, so Enterprise and
 // self-hosted installations work without host-name conventions.
 import { exec, home } from "herdr";
 import { cachedQuery } from "./query-cache.js";
+import { cliCandidates, cliName, missingExecutable, missingOnLaunch, notAuthenticated, outputText } from "./hosting-cli.js";
 
 const HOST_PATTERN = /^[A-Za-z0-9.-]+$/;
 const SEGMENT_PATTERN = /^[A-Za-z0-9_.-]+$/;
@@ -26,30 +28,61 @@ export function repositoryFromRemote(remote) {
   return parsed.repo;
 }
 
-function outputText(result) {
-  return `${result?.stderr || ""}\n${result?.stdout || ""}`.trim();
+export const providerIcon = (provider) => provider?.kind === "gitlab" ? "gitlab" : "github";
+export const providerName = (provider) => provider?.kind === "gitlab" ? "GitLab" : "GitHub";
+export const providerHost = (provider) => provider?.host || (provider?.kind === "gitlab" ? "gitlab.com" : "github.com");
+
+export const repositoryTarget = (provider, repo = provider?.repo) => `${providerHost(provider)}/${repo}`;
+export const repositoryUrl = (provider, repo) => `https://${repositoryTarget(provider, repo)}`;
+
+export function providerProblem(message, provider) {
+  const text = String(message ?? "");
+  if (/no github or gitlab remote|must point to a github or gitlab|github or gitlab repository required|unsupported repository|no .* remote found|valid repository address/i.test(text)) {
+    return {
+      kind: "unsupported",
+      title: "GitHub or GitLab repository required",
+      detail: "Open a folder with a repository remote that your authenticated gh or glab CLI can access.",
+      command: "git remote -v",
+    };
+  }
+  const tool = cliName(provider?.kind);
+  const command = `${tool} auth login --hostname ${providerHost(provider)}`;
+  const url = tool === "glab" ? "https://gitlab.com/gitlab-org/cli" : "https://cli.github.com";
+  if (missingExecutable(text) || /is not installed/i.test(text)) {
+    return {
+      kind: "missing",
+      title: `${providerName(provider)} CLI is not installed`,
+      detail: `Install ${tool}, log in, then try again.`,
+      command,
+      url,
+    };
+  }
+  if (notAuthenticated(text)) {
+    return {
+      kind: "logged-out",
+      title: "Git hosting CLI is not logged in",
+      detail: "Run the matching CLI's auth login for this host, then try again.",
+      command,
+      url,
+    };
+  }
+  return null;
 }
 
 async function runCli(command, args, options) {
-  const candidates = [command];
-  if (["gh", "glab"].includes(command)) candidates.push(`~/.local/bin/${command}`, `~/.local/.bin/${command}`, `~/.bin/${command}`, `/opt/homebrew/bin/${command}`, `/usr/local/bin/${command}`);
   let result;
-  for (const candidate of candidates) {
+  for (const candidate of cliCandidates(command, home())) {
     for (let attempt = 0; attempt < 2; attempt++) {
-      try { result = await exec(candidate.startsWith("~/") ? `${home()}/${candidate.slice(2)}` : candidate, args, options); }
+      try { result = await exec(candidate, args, options); }
       catch (error) {
         const message = String(error.message ?? error);
-        result = { code: missingExecutable(message) ? 127 : 1, stdout: "", stderr: message };
+        result = { code: missingOnLaunch(message) ? 127 : 1, stdout: "", stderr: message };
       }
       if (result.code === 0 || !/\bEOF\b|connection (?:reset|closed|aborted)|timed out|timeout|502|503|504/i.test(outputText(result))) break;
     }
     if (result.code !== 127 && !missingExecutable(outputText(result))) return result;
   }
   return result;
-}
-
-function missingExecutable(text) {
-  return /os error 2|\benoent\b|command not found|cannot run[^\n]*no such file|^\S+: (?:not found|no such file or directory)$/im.test(text);
 }
 
 function jsonRepo(stdout, kind) {
@@ -84,7 +117,7 @@ export function resolveProvider(remote, options = {}) {
   const key = JSON.stringify(["provider:v2", parsed.host, parsed.repo, tools, configured]);
   return cachedQuery(key, 600000, async () => {
     if (configured) return configured;
-    const target = `${parsed.host}/${parsed.repo}`;
+    const target = repositoryTarget(parsed);
     const checked = await Promise.all(Object.entries(tools).map(async ([kind, tool]) =>
       ({ kind, tool, version: await probeCli(tool) })));
     const available = checked.filter(({ version }) => version.code === 0);

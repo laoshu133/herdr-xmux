@@ -1,8 +1,4 @@
-// settings.js: a mod's preferences from the `settings` key of its installed
-// mod.json, merged over the defaults its code ships with. Herdr reloads the
-// mod when that file is saved, so an edit applies at once. Unknown keys and
-// values of the wrong type are reported, never fatal. Shared byte for byte
-// between the mods in this repository.
+// Generated from lib/xmux/settings.js. Run node scripts/sync-common.mjs.
 import { readTextFile, appHome } from "herdr";
 
 const UNITS = { ms: 1, s: 1000, m: 60000, h: 3600000 };
@@ -35,7 +31,7 @@ export function mergeSettings(defaults, given, problems = [], path = "") {
   }
   for (const [key, value] of Object.entries(given)) {
     const name = path ? `${path}.${key}` : key;
-    if (!(key in defaults)) {
+    if (!Object.hasOwn(defaults, key)) {
       problems.push(`${name} is not a setting`);
       continue;
     }
@@ -43,8 +39,7 @@ export function mergeSettings(defaults, given, problems = [], path = "") {
     if (Array.isArray(current)) {
       if (Array.isArray(value)) result[key] = value;
       else problems.push(`${name} should be an array`);
-    }
-    else if (isObject(current)) result[key] = mergeSettings(current, value, problems, name);
+    } else if (isObject(current)) result[key] = mergeSettings(current, value, problems, name);
     else if (typeof value === typeof current || (typeof current === "string" && typeof value === "number"))
       result[key] = value;
     else problems.push(`${name} should be a ${typeof current}`);
@@ -53,7 +48,7 @@ export function mergeSettings(defaults, given, problems = [], path = "") {
 }
 
 // The merged settings for `name` plus a list of problems to show the person.
-export async function loadSettings(name, defaults) {
+export async function loadSettings(name, defaults, { localOverrides = false } = {}) {
   const problems = [];
   let given = {};
   try {
@@ -63,6 +58,7 @@ export async function loadSettings(name, defaults) {
     problems.push(`mod.json could not be read: ${e.message}`);
   }
   const settings = mergeSettings(defaults, given, problems);
+  if (!localOverrides) return { settings, problems };
   const local = await readTextFile(`${appHome()}/data/${name}/settings.json`).catch(() => null);
   if (!local) return { settings, problems };
   try {

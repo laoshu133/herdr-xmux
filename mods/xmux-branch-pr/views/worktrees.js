@@ -2,7 +2,7 @@
 import { div } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { run, theme } from "herdr";
-import { requestKey } from "../github/provider.js";
+import { requestKey } from "../shared/provider.js";
 import { TEXT, Button, Row, TextButton, TextField } from "./ui.js";
 
 export const worktreeViewMethods = {

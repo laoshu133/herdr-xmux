@@ -1,7 +1,8 @@
 // Read-only PR discovery for each [machine, checkout]. This observer is separate
 // from space rendering so frequent redraws never launch Git or hosting CLI commands.
-import { exec, readTextFile, appHome } from "herdr";
-import { resolveProvider, repositoryKey, requestKey, decodeBinding } from "../shared/provider.js";
+import { exec } from "herdr";
+import { loadPRSettings } from "../shared/pr-settings.js";
+import { resolveProvider, repositoryTarget, repositoryKey, requestKey, decodeBinding } from "../shared/provider.js";
 import { cliExec, hostingApi, apiPages, queryString } from "../shared/hosting.js";
 import { normalizeMergeRequest } from "../shared/merge-request.js";
 import { cachedQuery, configureQueries } from "../shared/query-cache.js";
@@ -120,22 +121,13 @@ export class PRStatusObserver {
     const association = await git(["config", "--get", `branch.${branch}.herdr-pr`]);
     if (association.code !== 0 && association.code !== 1)
       throw new Error("Cannot read PR association");
-    const preferences = await cachedQuery("pr-cli-settings", PR_POLL_MS, async () => {
-      const raw = await readTextFile(`${appHome()}/mods/xmux-branch-pr/mod.json`);
-      const settings = JSON.parse(raw || "{}").settings || {};
-      const local = await readTextFile(`${appHome()}/data/xmux-branch-pr/settings.json`).catch(() => null);
-      if (!local) return settings;
-      const overrides = JSON.parse(local);
-      return {
-        tools: { ...settings.tools, ...overrides?.tools },
-        hosts: Array.isArray(overrides?.hosts) ? overrides.hosts : settings.hosts,
-      };
-    });
-    const tools = preferences.tools || {};
+    const { tools, hosts } = await cachedQuery("pr-cli-settings", PR_POLL_MS, async () =>
+      (await loadPRSettings()).settings,
+    );
     const binding = decodeBinding(association.stdout?.trim());
     const fetchOne = async (provider, repo, number) => {
       if (provider.kind === "github") {
-        const pr = await this.query(["pr", "view", String(number), "--repo", `${provider.host}/${repo}`, "--json", PR_FIELDS], provider, tools);
+        const pr = await this.query(["pr", "view", String(number), "--repo", repositoryTarget(provider, repo), "--json", PR_FIELDS], provider, tools);
         return { ...pr, provider, repository: repo };
       }
       const row = await cachedQuery(JSON.stringify(["sidebar-mr", provider, repo, number, tools]), PR_POLL_MS,
@@ -152,7 +144,7 @@ export class PRStatusObserver {
       const result = await git(["remote", "get-url", name]);
       if (result.code !== 0) throw new Error("Cannot read Git remote URL");
       try {
-        const provider = await resolveProvider(result.stdout, { tools, hosts: preferences.hosts });
+        const provider = await resolveProvider(result.stdout, { tools, hosts });
         repositories.set(repositoryKey(provider), provider);
       } catch (e) {
         // Ignore unsupported remotes only when another usable remote exists.
@@ -175,7 +167,7 @@ export class PRStatusObserver {
       const repository = provider.repo;
       let found;
       try {
-        if (provider.kind === "github") found = await this.query(["pr", "list", "--repo", `${provider.host}/${repository}`,
+        if (provider.kind === "github") found = await this.query(["pr", "list", "--repo", repositoryTarget(provider, repository),
           "--head", branch, "--state", "all", "--limit", "100", "--json", PR_FIELDS], provider, tools);
         else {
           const key = JSON.stringify(["sidebar-mrs", provider, branch, tools]);
@@ -205,7 +197,7 @@ export class PRStatusObserver {
     const cached = this.cache.get(key);
     if (cached && Date.now() - cached.at < PR_POLL_MS) return cached.data;
     const at = Date.now();
-    const result = await cliExec(provider.kind, args, { tools });
+    const result = await cliExec(provider.kind, args, { tools, host: provider.host });
     const data = JSON.parse(result.stdout);
     this.cache.set(key, { at, data });
     return data;

@@ -2,7 +2,8 @@
 import { div } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar } from "gpui-base";
 import { theme } from "herdr";
-import { cardChecks, prStatus, repoUrl, timeAgo, who, providerName, providerIcon, requestNumber, requestName, requestKey } from "../github/model.js";
+import { cardChecks, prStatus, timeAgo, who } from "../github/model.js";
+import { repositoryUrl, providerName, providerIcon, requestNumber, requestName, requestKey } from "../shared/provider.js";
 import {
   TEXT,
   Busy,
@@ -215,11 +216,11 @@ export const listMethods = {
           id: "pr-repo-provider",
           icon: providerIcon(this.provider),
           label: `Open ${this.repo} on ${providerName(this.provider)}`,
-          onClick: (cx) => cx.open_url(repoUrl(this.repo, this.provider)),
+          onClick: (cx) => cx.open_url(repositoryUrl(this.provider, this.repo)),
         }),
       );
     if (this.repo) choosers.child(IconButton({ id: "pr-create", icon: "plus", label: `Create on ${providerName(this.provider)}`,
-      onClick: cx => cx.open_url(`${repoUrl(this.repo, this.provider)}/${this.provider?.kind === "gitlab" ? "-/merge_requests/new" : "compare"}`) }));
+      onClick: cx => cx.open_url(`${repositoryUrl(this.provider, this.repo)}/${this.provider?.kind === "gitlab" ? "-/merge_requests/new" : "compare"}`) }));
     const t = theme();
     return v_flex()
       .id("pr-filter-row")
@@ -394,10 +395,10 @@ export const listMethods = {
     const mixed = new Set(repositories.map(p => p.provider?.kind)).size > 1;
     const repo = selected?.repository ?? repositories[0]?.repository ?? this.repo;
     const multiple = repositories.length > 1;
-    const url = !multiple && repo && provider ? repoUrl(repo, provider) : null;
+    const url = !multiple && repo && provider ? repositoryUrl(provider, repo) : null;
     const repoLabel = multiple ? "Multiple repositories" : repo || "No repository";
     const addresses = repositories.length
-      ? repositories.map(p => p.provider ? repoUrl(p.repository, p.provider) : p.repository).join("\n")
+      ? repositories.map(p => p.provider ? repositoryUrl(p.provider, p.repository) : p.repository).join("\n")
       : url;
     const branch = this.pr?.headRefName || this.branch;
     const label = branch ? `${repoLabel}:${branch}` : repoLabel;

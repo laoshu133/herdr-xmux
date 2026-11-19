@@ -1,7 +1,7 @@
 // Reads through the helper, which holds the key and the GraphQL. The key and the
 // helper stay on this computer, including for remote spaces.
 import { exec } from "herdr";
-import { duration } from "../settings.js";
+import { duration } from "../shared/settings.js";
 import { searchQuery } from "./model.js";
 import { providerApi } from "./cli.js";
 
@@ -14,12 +14,13 @@ export const readMethods = {
     const provider = request.provider ?? this.provider;
     const { provider: _provider, tools: _tools, ...payload } = request;
     return queryKey(["issue-api", sp?.machine ?? null, provider?.kind, provider?.host,
-      this.settings.tools ?? null, { ...payload, repo: request.repo ?? provider?.repo ?? this.repo }]);
+      request.tools ?? this.settings.tools ?? null, { ...payload, repo: request.repo ?? provider?.repo ?? this.repo }]);
   },
 
   async api(request, sp = this.sp) {
     const provider = request.provider ?? this.provider;
-    request = { ...request, provider, repo: request.repo ?? provider?.repo ?? this.repo };
+    request = { ...request, provider, repo: request.repo ?? provider?.repo ?? this.repo,
+      tools: request.tools ?? this.settings.tools };
     const read = ["list", "detail", "branch", "files", "jobs", "logs", "viewer"].includes(request.action);
     const load = () => providerApi(request, sp, provider);
     if (!read) {

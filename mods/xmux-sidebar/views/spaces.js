@@ -20,7 +20,7 @@ import {
 import { requestNumber } from "../shared/provider.js";
 import { PRStatusObserver, prPlaceKey, prAppearance } from "../git/pr-status.js";
 import { spaceFolder, checkoutKey, readCheckout } from "../git/checkouts.js";
-import { loadSettings, duration } from "../settings.js";
+import { loadSettings, duration } from "../shared/settings.js";
 import { findNode } from "./find-node.js";
 import { TEXT, Icon, IconButton, Badge, Rail } from "./ui.js";
 import { scrollingScrollbar } from "./scrollbar.js";

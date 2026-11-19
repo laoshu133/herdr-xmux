@@ -2,7 +2,8 @@
 import { div } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar } from "gpui-base";
 import { theme } from "herdr";
-import { issueStats, linkedPRs, person, workflowOrder, providerName } from "../provider/model.js";
+import { issueStats, linkedPRs, person, workflowOrder } from "../provider/model.js";
+import { providerName } from "../shared/provider.js";
 import { agentName } from "../actions/agents.js";
 import { chatItems } from "../shared/chat-menu.js";
 import {

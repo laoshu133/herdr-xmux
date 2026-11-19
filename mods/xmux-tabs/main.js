@@ -10,7 +10,7 @@
 import { View } from "gpui-kit";
 import { ScrollHandle } from "gpui-base";
 import { shared, setShared, nextCommand, props, notify } from "herdr";
-import { loadSettings } from "./settings.js";
+import { loadSettings } from "./shared/settings.js";
 import { buttons, execute } from "./actions/engine.js";
 import { panelMemoryMethods } from "./views/panel-memory.js";
 import { arrangementMethods } from "./views/arrangement.js";

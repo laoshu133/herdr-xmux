@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import * as hostingCli from "../lib/xmux/hosting-cli.js";
 
 async function moduleAt(path, names, deps = {}) {
   const source = (await readFile(new URL(path, import.meta.url), "utf8"))
@@ -14,7 +15,7 @@ const row = { id: 400, iid: 12, state: "opened", title: "Change", author: { id: 
   target_project_id: 8, source_branch: "feature", target_branch: "main", sha, user: { can_merge: true },
   detailed_merge_status: "mergeable", updated_at: "2026-11-18T12:00:00Z", changes_count: "1", web_url: `https://code.example/${repo}/-/merge_requests/12` };
 const project = { id: 8, path_with_namespace: repo, merge_method: "merge", squash_option: "default_off", permissions: { project_access: { access_level: 40 } } };
-const providerFns = await moduleAt("../lib/xmux/provider.js", ["requestNumber", "requestKey", "repositoryKey", "requestRef", "encodeBinding", "decodeBinding", "requestName", "requestShort", "requestSearch", "remoteInfo", "configuredProvider"]);
+const providerFns = await moduleAt("../lib/xmux/provider.js", ["requestNumber", "requestKey", "repositoryKey", "requestRef", "encodeBinding", "decodeBinding", "requestName", "requestShort", "requestSearch", "remoteInfo", "configuredProvider", "providerHost", "providerName", "repositoryTarget", "repositoryUrl"], hostingCli);
 const model = await moduleAt("../lib/xmux/merge-request.js", ["normalizeMergeRequest", "applyPermissions", "applyApprovals", "applyApprovalRules", "normalizeDiscussions", "normalizeDiff", "pipelineStatus", "login"]);
 const commonModel = await moduleAt("../mods/xmux-branch-pr/github/model.js", ["stateEvents", "prStats", "mergeBlockers", "conversationEntries", "unresolvedThreads", "fixCheckMessage", "searchQuery"], providerFns);
 const cachedQuery = (_key, _ttl, load) => load();
@@ -230,7 +231,7 @@ test("auto-merge is available only for a running pipeline and confirms schedulin
 test("CLI transport specifies host and local execution, retries reads once and never replays writes", async () => {
   const calls = [];
   let nextCode = 503;
-  const f = await moduleAt("../lib/xmux/hosting.js", ["hostingApi"], { home: () => "/home/me", exec: async (command, args, options) => {
+  const f = await moduleAt("../lib/xmux/hosting.js", ["hostingApi"], { ...hostingCli, home: () => "/home/me", exec: async (command, args, options) => {
     calls.push({ command, args, options });
     const code = nextCode; nextCode = 0;
     return code ? { code: 1, stderr: "HTTP 503", stdout: "" } : { code: 0, stdout: '{"id":1}' };
@@ -246,7 +247,7 @@ test("CLI transport specifies host and local execution, retries reads once and n
 
 test("GUI PATH fallback is used only for launch failures and respects explicit CLI paths", async () => {
   const calls = [];
-  const f = await moduleAt("../lib/xmux/hosting.js", ["cliExec"], { home: () => "/home/me", exec: async (command, _args, options) => {
+  const f = await moduleAt("../lib/xmux/hosting.js", ["cliExec"], { ...hostingCli, home: () => "/home/me", exec: async (command, _args, options) => {
     calls.push({ command, options });
     if (command === "glab") throw new Error("No such file or directory");
     return { code: 0, stdout: "{}" };
@@ -257,9 +258,36 @@ test("GUI PATH fallback is used only for launch failures and respects explicit C
   assert.equal(calls.at(-1).command, "/custom/glab");
 });
 
+test("Issues targets the selected host and does not replay a failed comment", async () => {
+  const calls = [];
+  const { cliExec } = await moduleAt("../lib/xmux/hosting.js", ["cliExec"], {
+    ...hostingCli, home: () => "/home/me",
+    exec: async (command, args, options) => {
+      calls.push({ command, args, options });
+      return args.includes("comment")
+        ? { code: 1, stderr: "HTTP 503: attachment service returned no such file" }
+        : { code: 0, stdout: "[]" };
+    },
+  });
+  const { providerApi } = await moduleAt("../mods/xmux-branch-issue/provider/cli.js", ["providerApi"], {
+    ...providerFns, cliExec, cliName: hostingCli.cliName,
+  });
+  const space = { machine: "remote", folder: "/checkout" };
+  await providerApi({ action: "list", repo, state: "done" }, space, provider);
+  assert.deepEqual(calls[0].args, ["issue", "list", "--repo", `https://code.example/${repo}`,
+    "--per-page", "100", "--output", "json", "--closed"]);
+  assert.equal(calls[0].options.on, null);
+  assert.equal(calls[0].options.cwd, undefined);
+
+  const enterprise = { kind: "github", host: "enterprise.example", repo: "a/b" };
+  await assert.rejects(providerApi({ action: "comment", issue: 4, body: "text" }, space, enterprise), /HTTP 503/);
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls[1].args, ["issue", "comment", "4", "--repo", "enterprise.example/a/b", "--body", "text"]);
+});
+
 test("API pagination reads every page and rejects non-list responses", async () => {
   const calls = [];
-  const f = await moduleAt("../lib/xmux/hosting.js", ["apiPages"], { home: () => "/home/me", exec: async (_command, args) => {
+  const f = await moduleAt("../lib/xmux/hosting.js", ["apiPages"], { ...hostingCli, home: () => "/home/me", exec: async (_command, args) => {
     const endpoint = args[5]; calls.push(endpoint);
     return { code: 0, stdout: JSON.stringify(endpoint.endsWith("page=1") ? Array.from({ length: 100 }, (_, id) => ({ id })) : [{ id: 100 }]) };
   } });
@@ -399,7 +427,7 @@ test("sidebar MR status uses detailed GitLab merge state rather than the older c
 
 test("GraphQL read retry opt-in cannot replay a mutation", async () => {
   const calls = [];
-  const { hostingApi } = await moduleAt("../lib/xmux/hosting.js", ["hostingApi"], { home: () => "/home/me", exec: async (_command, args) => {
+  const { hostingApi } = await moduleAt("../lib/xmux/hosting.js", ["hostingApi"], { ...hostingCli, home: () => "/home/me", exec: async (_command, args) => {
     calls.push(args);
     return { code: 1, stdout: "", stderr: "HTTP 503" };
   } });
@@ -411,7 +439,7 @@ test("GraphQL read retry opt-in cannot replay a mutation", async () => {
 });
 
 test("non-list pagination data is an error rather than an empty success", async () => {
-  const { apiPages } = await moduleAt("../lib/xmux/hosting.js", ["apiPages"], { home: () => "/home/me", exec: async () => ({ code: 0, stdout: '{"message":"unexpected"}' }) });
+  const { apiPages } = await moduleAt("../lib/xmux/hosting.js", ["apiPages"], { ...hostingCli, home: () => "/home/me", exec: async () => ({ code: 0, stdout: '{"message":"unexpected"}' }) });
   await assert.rejects(apiPages(provider, "projects/8/merge_requests/12/diffs", { tools: { gitlab: "/custom/glab" } }), /Unexpected paginated/);
 });
 

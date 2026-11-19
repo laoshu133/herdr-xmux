@@ -1,7 +1,7 @@
 // Checkouts of a PR: those that exist, and making a new one as a new space.
 import { InputState } from "gpui-base";
 import { spaces, exec, home, run, knownAgents } from "herdr";
-import { requestKey, requestRef, requestShort, repositoryKey, resolveProvider, encodeBinding, decodeBinding } from "../github/provider.js";
+import { requestKey, requestRef, requestShort, repositoryKey, resolveProvider, encodeBinding, decodeBinding } from "../shared/provider.js";
 
 export const worktreeMethods = {
   worktreeKey() {

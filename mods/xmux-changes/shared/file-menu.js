@@ -1,3 +1,4 @@
+// Generated from lib/xmux/file-menu.js. Run node scripts/sync-common.mjs.
 import { openOverlay, spaces } from "herdr";
 
 // A plain-data contract: each entry point opens the same Files menu instance.

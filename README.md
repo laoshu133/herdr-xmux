@@ -117,7 +117,9 @@ for remote checkouts. Credentials stay with the CLI.
 
 For SSH aliases or a different API hostname, configure PRs and the sidebar in
 `${HERDR_APP_HOME:-$HOME/.config/herdr-app}/data/xmux-branch-pr/settings.json`.
-Optional `tools.github` and `tools.gitlab` entries override CLI paths.
+Both apply settings from `mods/xmux-branch-pr/mod.json` over the built-in
+defaults, then apply the local settings. Optional `tools.github` and
+`tools.gitlab` entries override CLI paths.
 
 ```json
 {
@@ -131,5 +133,24 @@ Cache lifetimes are 10 minutes for CLI availability and provider detection,
 1 minute for authorization, and 5 minutes for checkout discovery. PR and issue
 lists cache for 60 seconds and details for 30 seconds. Use **Refresh** after
 changing accounts or permissions.
+
+## Shared mod code
+
+Herdr confines each mod's imports to its own directory, including imports
+through symlinks. XMux keeps shared source in `lib/xmux/` and generates
+`mods/xmux-*/shared/` copies for the mods that use it. Each mod imports its
+own copy. The shared title rules in `lib/xmux/tab-title.js` use the current
+terminal program to derive automatic titles. When an Agent exits and the
+shell resumes, the title follows the shell.
+
+Edit the source in `lib/xmux/`. When adding a shared module or a new consumer,
+register it in the `targets` map. Run the commands below and commit both the
+source and the generated copies. The installer also runs the consistency check.
+[Sync script](scripts/sync-common.mjs)
+
+```sh
+node scripts/sync-common.mjs
+node scripts/sync-common.mjs --check
+```
 
 [Layout and development](RECIPE.md) · [Apache License 2.0](LICENSE)

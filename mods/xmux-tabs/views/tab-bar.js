@@ -4,7 +4,7 @@ import { h_flex } from "gpui-base";
 import { spaces, panes, focused, run, openOverlay, setShared, theme, window, shared, layout, settings } from "herdr";
 import { openTerminalTab } from "../shared/context.js";
 import { TEXT, Icon, IconButton, DropLine } from "./ui.js";
-import { automaticTabTitle, tabLead } from "./tab-title.js";
+import { automaticTabTitle, tabLead } from "../shared/tab-title.js";
 
 const CHAR_WIDTH = 8; // Roughly, to size the drag preview.
 const TAB_HEIGHT = 36;

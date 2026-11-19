@@ -2,7 +2,8 @@
 import { div } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar } from "gpui-base";
 import { theme, shared, setShared } from "herdr";
-import { fileTree, timeAgo } from "../git/model.js";
+import { timeAgo } from "../git/model.js";
+import { fileTree } from "../shared/file-tree.js";
 import { fileMenuTarget, showFileMenu } from "../shared/file-menu.js";
 import {
   TEXT,
@@ -362,7 +363,7 @@ export const sidebarMethods = {
         .filter((key) => key.startsWith(`${scope}:`))
         .map((key) => key.slice(scope.length + 1)),
     );
-    for (const row of fileTree(files, closed))
+    for (const row of fileTree(files, (file) => file.path, closed))
       list.child(
         row.kind === "folder"
           ? this.folderRow(row, scope, closed.has(row.path))

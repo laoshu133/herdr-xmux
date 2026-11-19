@@ -4,22 +4,23 @@
 //   the menu           a popup at the pointer on right-click
 // shared("xmux-files.*") connects them. The class is built from:
 //   files/reads.js        the folder tree and Git's view of it
-//   files/file-icons.js   Better Icons' pictures, when it's installed
+//   shared/file-icons.js   Better Icons' pictures, when it's installed
 //   actions/open.js       opening tabs, and handing a file to XMux Changes
 //   actions/outside.js    code editors, Finder
 //   views/chat-picker.js  choosing a chat
-//   actions/menus.js      popup menus
+//   shared/menu.js        popup menus
 //   views/tree.js, viewer.js, context-menu.js   the drawing
 // files/model.js says what the data means; views/ui.js holds every look.
 import { View } from "gpui-kit";
+import { Select } from "./views/ui.js";
 import { appHome, exec, hc, nextCommand, props, setShared, shared, spaces, readTextFile, writeTextFile } from "herdr";
-import { loadSettings, duration } from "./settings.js";
-import { followFileIcons } from "./files/file-icons.js";
+import { loadSettings, duration } from "./shared/settings.js";
+import { followFileIcons } from "./shared/file-icons.js";
 import { readMethods } from "./files/reads.js";
 import { openMethods, restoreViewerSource } from "./actions/open.js";
 import { outsideMethods } from "./actions/outside.js";
 import { chatPickerMethods } from "./views/chat-picker.js";
-import { menuMethods } from "./actions/menus.js";
+import { menuMethods } from "./shared/menu.js";
 import { treeMethods } from "./views/tree.js";
 import { viewerMethods } from "./views/viewer.js";
 import { contextMenuMethods } from "./views/context-menu.js";
@@ -147,7 +148,7 @@ Object.assign(
   openMethods,
   outsideMethods,
   chatPickerMethods,
-  menuMethods,
+  menuMethods(Select),
   treeMethods,
   viewerMethods,
   contextMenuMethods,

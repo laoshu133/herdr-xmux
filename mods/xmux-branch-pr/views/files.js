@@ -4,8 +4,8 @@ import { div } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { spaces, panes, theme, shared, setShared, run } from "herdr";
 import { fileMenuTarget, showFileMenu } from "../shared/file-menu.js";
-import { requestKey, requestShort } from "../github/provider.js";
-import { fileTree } from "../github/model.js";
+import { requestKey, requestShort } from "../shared/provider.js";
+import { fileTree } from "../shared/file-tree.js";
 import { TEXT, codeFont, Chevron, Icon, IconButton, Message, Row } from "./ui.js";
 
 const TAB_OPEN_TIMEOUT_MS = 1500;
@@ -72,7 +72,7 @@ export const filesMethods = {
       for (const file of files.list) body.child(this.fileRow(file, 0, true));
       return;
     }
-    for (const row of fileTree(files.list, this.closedFolders))
+    for (const row of fileTree(files.list, (file) => file.filename, this.closedFolders))
       body.child(row.kind === "folder" ? this.folderRow(row) : this.fileRow(row.file, row.depth));
   },
 

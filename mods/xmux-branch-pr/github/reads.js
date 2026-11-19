@@ -1,7 +1,7 @@
 // Provider-neutral reads. UI state always belongs to a complete repository identity.
-import { duration, size } from "../settings.js";
+import { duration, size } from "../shared/settings.js";
 import { runIdOf, searchQuery } from "./model.js";
-import { requestKey } from "./provider.js";
+import { requestKey } from "../shared/provider.js";
 import { gitlabApi } from "../gitlab/cli.js";
 import { githubApi } from "./cli.js";
 import { cachedQuery, invalidateQueries, peekQuery, queryKey } from "../shared/query-cache.js";

@@ -4,7 +4,8 @@
 import { exec } from "herdr";
 import { cachedQuery } from "../shared/query-cache.js";
 import { rememberRoot } from "../shared/context.js";
-import { identifiersIn, searchQuery, resolveProvider } from "./model.js";
+import { identifiersIn, searchQuery } from "./model.js";
+import { resolveProvider } from "../shared/provider.js";
 
 // A branch name rarely carries more identifiers than this; each one costs a request.
 const MAX_BRANCH_CANDIDATES = 4;

@@ -22,7 +22,7 @@ import { newCode, CodeEditor, CodeRows } from "../shared/code-viewer.js";
 import { fileMenuTarget, showFileMenu } from "../shared/file-menu.js";
 import { viewerEntries } from "../actions/open.js";
 import { foundEditors } from "../actions/outside.js";
-import { fileIcon, isLight } from "../files/file-icons.js";
+import { fileIcon, isLight } from "../shared/file-icons.js";
 import { TEXT, FileIcon, Markdown, Message, MenuButton, TextButton, codeFont, codeSize } from "./ui.js";
 
 

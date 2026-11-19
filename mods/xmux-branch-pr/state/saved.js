@@ -1,6 +1,6 @@
 // What survives a reload: each repository's filters and open PR, each PR's tab
 // and filters, and which comments have been read.
-import { requestKey, repositoryKey } from "../github/provider.js";
+import { requestKey, repositoryKey } from "../shared/provider.js";
 import { allComments, searchQuery } from "../github/model.js";
 
 const SECTIONS = ["overview", "conversation", "checks", "files"];

@@ -4,8 +4,8 @@
 import { exec } from "herdr";
 import { cachedQuery } from "../shared/query-cache.js";
 import { rememberRoot } from "../shared/context.js";
-import { repositoryFromRemote, searchQuery } from "./model.js";
-import { resolveProvider, decodeBinding, requestKey, repositoryKey } from "./provider.js";
+import { searchQuery } from "./model.js";
+import { resolveProvider, decodeBinding, requestKey, repositoryKey } from "../shared/provider.js";
 
 export const discoveryMethods = {
   changeSpace(sp, key, cx) {

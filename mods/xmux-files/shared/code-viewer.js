@@ -1,3 +1,4 @@
+// Generated from lib/xmux/code-viewer.js. Run node scripts/sync-common.mjs.
 // Native Editor owns ordinary source selection, syntax and keyboard navigation.
 // Decorated text uses one selectable TextView per column, never per syntax run
 // or virtual row: the native selection then retains offscreen text and does not

@@ -2,9 +2,9 @@
 // the source keeps its slot, a copy follows the pointer, and a line shows where it
 // would land. Nothing moves until release.
 import { spaces, run, shared, setShared, closeOverlay, props, focused } from "herdr";
-import { duration } from "../settings.js";
+import { duration } from "../shared/settings.js";
 import { hideToolbarAction, tabMoveIndex } from "../actions/toolbar.js";
-import { automaticTabTitle, tabLead } from "./tab-title.js";
+import { automaticTabTitle, tabLead } from "../shared/tab-title.js";
 import { panes } from "herdr";
 
 export const DRAG_KEY = "xmux-tabs.action-drag";

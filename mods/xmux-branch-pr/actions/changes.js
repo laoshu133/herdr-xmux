@@ -1,6 +1,6 @@
 // What this panel writes to the selected hosting service, always from an explicit click: merging and
 // closing, re-requesting a review, and comments, replies and resolving.
-import { requestKey, requestNumber, providerName } from "../github/provider.js";
+import { requestKey, requestNumber, providerName } from "../shared/provider.js";
 import { STATE_CHANGES } from "../github/model.js";
 
 export const changeMethods = {

@@ -1,6 +1,6 @@
+// Generated from lib/xmux/file-icons.js. Run node scripts/sync-common.mjs.
 // Picks a file's or folder's icon from Better Icons, the way VS Code's Material Icon Theme does.
-// Shared between this repo's mods: each keeps an identical copy, because a mod can't import from
-// another's folder. The icons themselves are read by path, so only Better Icons holds them.
+// The icons themselves are read by path from Better Icons.
 import { appHome, readTextFile, watchFolder } from "herdr";
 
 const PACK = "mods/better-icons";

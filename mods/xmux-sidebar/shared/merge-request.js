@@ -1,3 +1,4 @@
+// Generated from lib/xmux/merge-request.js. Run node scripts/sync-common.mjs.
 // GitLab's project IDs, MR IIDs and native semantics stay explicit in the model.
 export const login = (u) => u?.username || u?.login || u?.name || "";
 export function pipelineStatus(value) {

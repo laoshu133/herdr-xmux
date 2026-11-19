@@ -12,8 +12,8 @@ import {
   prStatus,
   stateEvents,
   who,
-  providerName, providerIcon, requestNumber, requestName, requestKey,
 } from "../github/model.js";
+import { providerName, providerIcon, requestNumber, requestName, requestKey } from "../shared/provider.js";
 import { agentName } from "../actions/agents.js";
 import { stateIcon } from "./list.js";
 import {
