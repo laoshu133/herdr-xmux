@@ -650,6 +650,39 @@ test("a preview restored on another client rebases machine, space and tab IDs to
   assert.equal(restoreViewerSource(entry, [{ id: "other", machine: "wrong" }]), entry);
 });
 
+test("rapid Files clicks bind same-named previews to distinct tabs and reselect by path", async () => {
+  const data = new Map();
+  const requests = [];
+  const space = { id: "space", active: true, tabs: [] };
+  const panes = [];
+  const { openMethods, viewerEntries } = await moduleAt("../mods/xmux-files/actions/open.js", ["openMethods", "viewerEntries"], {
+    baseName: (path) => path.split("/").pop(),
+    spaces: () => [space], panes: () => panes,
+    shared: (key) => data.get(key), setShared: (key, value) => data.set(key, value),
+    run: (name, args) => requests.push([name, args]),
+  });
+  const first = { path: "/repo/a/main.js" };
+  const second = { path: "/repo/b/main.js" };
+  openMethods.openFile(first);
+  openMethods.openFile(second);
+  openMethods.openFile(first);
+  assert.deepEqual(requests.map(([name]) => name), ["tab.new", "tab.new"]);
+
+  // Herdr can publish the two new tabs before either viewer has bound its tab.
+  for (const [index, [, request]] of requests.entries()) {
+    const id = `tab-${index}`;
+    space.tabs.push({ id, name: request.name });
+    panes.push({ tab: id, mod: "xmux-files" });
+  }
+  for (const [id, entry] of Object.entries(viewerEntries()).reverse())
+    openMethods.bindViewerTab(id, entry);
+  for (const tab of space.tabs) tab.name = "main.js";
+  requests.length = 0;
+  openMethods.openFile(first);
+  openMethods.openFile(second);
+  assert.deepEqual(requests, [["tab.select", { id: "tab-0" }], ["tab.select", { id: "tab-1" }]]);
+});
+
 test("the popup stays alive until an asynchronous editor launch completes", async () => {
   const handlers = [], closed = [], gate = deferred();
   const node = () => new Proxy({}, { get: (_t, k) => (...args) => {

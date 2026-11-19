@@ -2,7 +2,7 @@
 // belongs in the code editor it can open.
 import { div, image } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { exec, focused, layout, panes, readTextFile, setShared, shared, theme } from "herdr";
+import { exec, layout, panes, readTextFile, setShared, shared, theme } from "herdr";
 import {
   baseName,
   buildRows,
@@ -45,20 +45,9 @@ export const viewerMethods = {
     return viewerEntries()[this.viewerId] ?? null;
   },
 
-  // Runs as the tab opens, which is when the focused tab is its own.
   claimTab() {
     const entry = this.viewerEntry();
-    if (entry?.tab) return;
-    const tab = focused()?.tab;
-    if (!tab || !panes().some((p) => p.tab === tab && p.mod === "xmux-files")) return;
-    // A tab reopened behind another one must not take that one's place.
-    if (Object.values(viewerEntries()).some((other) => other.tab === tab)) return;
-    if (entry?.others?.includes(tab)) return;
-    this.setViewer(this.viewerId, {
-      tab,
-      space: entry?.space ?? this.viewerSpace,
-      file: entry?.file ?? this.viewerFile,
-    });
+    if (entry && !entry.bound) this.bindViewerTab(this.viewerId, entry);
   },
 
   syncViewer(cx) {
