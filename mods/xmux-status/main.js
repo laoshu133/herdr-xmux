@@ -37,9 +37,8 @@ export default class WorkspaceStatus extends View {
     else this.crossTab(direction);
   }
 
-  focusAttention() {
-    const list = agents();
-    const byAddress = new Map(list.map((agent) => [agent.address, agent]));
+  orderedAgents() {
+    const byAddress = new Map(agents().map((agent) => [agent.address, agent]));
     const children = new Map();
     for (const terminal of terminals()) {
       if (terminal.state !== "live" || !terminal.parent || byAddress.has(terminal.address)) continue;
@@ -55,18 +54,53 @@ export default class WorkspaceStatus extends View {
     const append = (agent) => {
       if (seen.has(agent.address)) return;
       seen.add(agent.address);
-      ordered.push(agent);
+      let status = agent.status;
+      if (status === "error") status = "blocked";
+      if (status === "done" && !byAddress.has(agent.address)) status = "idle";
+      ordered.push({ address: agent.address, status });
       for (const child of children.get(agent.address) ?? []) append(child);
     };
     for (const address of order) {
       const agent = byAddress.get(address);
       if (agent) append(agent);
     }
+    return ordered;
+  }
 
-    const target = ordered.find((agent) => agent.status === "blocked" || agent.status === "error")
-      ?? ordered.find((agent) => byAddress.has(agent.address) && agent.status === "done");
+  focusAttention() {
+    const ordered = this.orderedAgents();
+    const target = ordered.find((agent) => agent.status === "blocked")
+      ?? ordered.find((agent) => agent.status === "done");
     if (target) run("agent.focus", { terminal: target.address });
     else notify({ title: "No agents need attention", level: "info" });
+  }
+
+  agentSummary(t) {
+    const counts = { blocked: 0, done: 0, working: 0 };
+    for (const agent of this.orderedAgents()) {
+      if (Object.hasOwn(counts, agent.status)) counts[agent.status]++;
+    }
+    const visible = Object.entries(counts).filter(([, count]) => count > 0);
+    if (!visible.length) return null;
+    const labels = visible.map(([state, count]) => `${count} ${state}`).join(", ");
+    const icons = {
+      blocked: () => div().size(14).flex_none().rounded(4).bg(t.blocked + "26")
+        .text_size(10.5).font_bold().text_color(t.blocked)
+        .flex().items_center().justify_center().child("!"),
+      done: () => div().size(7).mx(3).flex_none().rounded(4).bg(t.done),
+      working: () => svg("mods/xmux-sidebar/icons/spinner.svg").size(12).mx(1).flex_none()
+        .text_color(t.working),
+    };
+    return h_flex().id("agent-attention").gap(8).px(4).h_full().items_center().flex_none()
+      .role("button")
+      .accessibility_label(`Focus next Agent needing attention. ${labels}`)
+      .tooltip(`${labels} · Focus next Agent needing attention`)
+      .cursor_pointer()
+      .hover((s) => s.bg(t.hover))
+      .on_click(() => this.focusAttention())
+      .children(visible.map(([state, count]) => h_flex().gap(3).items_center()
+        .child(icons[state]())
+        .child(String(count))));
   }
 
   crossTab(direction) {
@@ -110,15 +144,13 @@ export default class WorkspaceStatus extends View {
   render(cx) {
     const t = theme();
     const space = activeWorkspace({ remember: false });
-    const list = agents();
-    const needs = list.filter(a => a.status === "blocked").length;
     const label = (icon, text) => h_flex().gap(5).items_center().child(svg(`mods/workspace-chrome/${icon}.svg`).size(12)).child(text);
     const git = this.gitFooter.render(space, t, cx);
+    const counts = this.agentSummary(t);
     return h_flex().size_full().px(12).gap(14).items_center().bg(t.chrome).border_t(1).border_color(t.border).text_size(11).text_color(t.muted)
       .child(label(space?.machine ? "server" : "monitor", space?.machine ?? "This computer"))
       .when(Boolean(git), el => el.child(git))
-      .child(h_flex().gap(6).items_center().child(div().size(6).rounded(3).bg(t.dim)).child(`${list.length} agents`)
-        .when(needs > 0, el => el.child(div().text_color(t.blocked).child(`· ${needs} needs you`))))
+      .when(Boolean(counts), el => el.child(counts))
       .child(div().flex_1())
       .child(div().id("palette").cursor_pointer().text_color(t.dim).on_click(() => run("app.palette")).child(this.hint(t)));
   }

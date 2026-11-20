@@ -187,7 +187,7 @@ test("attention follows sidebar order and waits for every blocked Agent to clear
     { address: "a", status: "blocked" },
     { address: "b", status: "blocked" },
   ];
-  const child = { address: "child", parent: "b", state: "live", status: "blocked" };
+  const child = { address: "child", parent: "b", state: "live", status: "error" };
   const order = ["done", "b", "a"];
   const calls = [];
   const { WorkspaceStatus } = await moduleAt("../mods/xmux-status/main.js", ["WorkspaceStatus"], {
@@ -195,11 +195,13 @@ test("attention follows sidebar order and waits for every blocked Agent to clear
     run: (_command, { terminal }) => calls.push(terminal), notify: ({ title }) => calls.push(title),
   });
   const status = new WorkspaceStatus();
+  assert.deepEqual(status.orderedAgents().map(({ status }) => status), ["done", "blocked", "blocked", "blocked"]);
   status.focusAttention();
   status.focusAttention();
   agents[2].status = "working";
   status.focusAttention();
-  child.status = "idle";
+  child.status = "done";
+  assert.equal(status.orderedAgents().find(({ address }) => address === "child").status, "idle");
   status.focusAttention();
   agents[1].status = "idle";
   status.focusAttention();
