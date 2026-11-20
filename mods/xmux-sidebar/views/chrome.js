@@ -47,7 +47,7 @@ export class Chrome {
       .gap(4)
       .items_center()
       .text_size(13.5)
-      .when(window()?.platform === "macos" && !window()?.fullscreen && !collapsed, (el) => el.pl(76))
+      .when(window()?.platform === "macos" && !window()?.fullscreen && !collapsed, (el) => el.pl(80))
       .when(!collapsed, (el) =>
         el.child(
           h_flex()
