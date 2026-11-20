@@ -488,30 +488,30 @@ test("shell titles and active/focused pane selection retain their behavior", asy
   assert.equal(tabLead({ id: "tab", active: false }, [a, b], a), b);
 });
 
-test("an exited Pi agent returns to the live shell title even with a saved session label", async () => {
+test("Pi tabs and floating terminals follow Core titles even when a session label is present", async () => {
   const agentProgram = { name: "Pi", key: "pi", agent: true };
   const shellProgram = { name: "zsh", key: "shell", shell: true, agent: false };
-  const pane = { terminal: "t1", title: "π - project", app: "pi", program: agentProgram };
+  const pane = { terminal: "mi-ber/t1", title: "π - project", app: "pi", program: agentProgram };
   const record = {
-    address: "t1", title: pane.title, program: agentProgram, report: { app: "pi" },
+    address: pane.terminal, title: pane.title, program: agentProgram,
     labels: { "heeler.session": JSON.stringify({ file: "/sessions/old.jsonl" }) },
     foreground: { cwd: "/home/me/project" },
   };
   const { automaticTabTitle, floatingTerminalTitle } = await moduleAt(
     "../lib/xmux/tab-title.js", ["automaticTabTitle", "floatingTerminalTitle"],
-    {
-      home: () => "/home/me",
-      terminals: () => [record],
-      readTextFile: async () => JSON.stringify({ type: "message", message: { role: "user", content: "Old task" } }),
-      setShared: () => {},
-    },
+    { home: () => "/home/me", terminals: () => [record] },
   );
   const tab = { name: "2" };
-  automaticTabTitle(tab, pane);
-  await Promise.resolve();
-  assert.equal(automaticTabTitle(tab, pane), "Old task");
+  assert.equal(automaticTabTitle(tab, pane), "π - project");
+  assert.equal(floatingTerminalTitle(record), "π - project");
 
-  Object.assign(record, { title: "me@host: ~/project", program: shellProgram, report: null });
+  record.title = "π - Fix login flow - project";
+  assert.equal(automaticTabTitle(tab, pane), record.title);
+  assert.equal(automaticTabTitle({ name: "Pi", named: true }, pane), record.title);
+  assert.equal(automaticTabTitle({ name: "My tab", named: true }, pane), "My tab");
+  assert.equal(floatingTerminalTitle(record), record.title);
+
+  Object.assign(record, { title: "me@host: ~/project", program: shellProgram });
   assert.equal(automaticTabTitle(tab, { ...pane, program: shellProgram }), "me@host: ~/project");
   assert.equal(automaticTabTitle(tab, pane), "me@host: ~/project");
   assert.equal(floatingTerminalTitle(record), "me@host: ~/project");
