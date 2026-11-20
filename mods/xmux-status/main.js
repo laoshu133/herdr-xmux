@@ -4,6 +4,7 @@ import { spaces, agents, terminals, focused, theme, run, shared, notify, window,
 import { openTerminalTab, splitTerminal } from "./shared/context.js";
 import { ReopenTab } from "./reopen.js";
 import { QuickDialog } from "./quick-dialog.js";
+import { GitFooter } from "./git-footer.js";
 
 export default class WorkspaceStatus extends View {
   init(_props, cx) {
@@ -11,6 +12,9 @@ export default class WorkspaceStatus extends View {
     this.reopenTab.init(cx);
     this.quickDialog = new QuickDialog();
     this.quickDialog.init();
+    this.gitFooter = new GitFooter();
+    this.gitFooter.refresh(cx);
+    cx.timer.every(1000, (cx) => this.gitFooter.refresh(cx));
     cx.spawn(async (cx) => {
       for (;;) {
         const command = await nextCommand();
@@ -109,9 +113,10 @@ export default class WorkspaceStatus extends View {
     const list = agents();
     const needs = list.filter(a => a.status === "blocked").length;
     const label = (icon, text) => h_flex().gap(5).items_center().child(svg(`mods/workspace-chrome/${icon}.svg`).size(12)).child(text);
+    const git = this.gitFooter.render(space, t);
     return h_flex().size_full().px(12).gap(14).items_center().bg(t.chrome).border_t(1).border_color(t.border).text_size(11).text_color(t.muted)
       .child(label(space?.machine ? "server" : "monitor", space?.machine ?? "This computer"))
-      .when(Boolean(space?.branch), el => el.child(label("branch", space.branch)))
+      .when(Boolean(git), el => el.child(git))
       .child(h_flex().gap(6).items_center().child(div().size(6).rounded(3).bg(t.dim)).child(`${list.length} agents`)
         .when(needs > 0, el => el.child(div().text_color(t.blocked).child(`· ${needs} needs you`))))
       .child(div().flex_1())

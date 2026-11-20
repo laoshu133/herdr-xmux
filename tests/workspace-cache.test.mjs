@@ -36,6 +36,51 @@ test("PRs and the sidebar use the same CLI and host overrides", async () => {
   assert.deepEqual(invalid.settings.hosts, []);
 });
 
+test("Git footer keeps Pi's status markers and counts net staged and unstaged edits", async () => {
+  const reports = [
+    { code: 0, stdout: ["# branch.oid abcdef0", "# branch.head topic", "# branch.ab +2 -1",
+      "1 MM staged-and-unstaged", "u UU conflict", "? untracked\nfile", ""].join("\0") },
+    { code: 0, stdout: "5\t2\ttracked.txt\n-\t-\timage.png\n" },
+  ];
+  const calls = [];
+  const exec = async (...args) => { calls.push(args); return reports.shift(); };
+  const { readGitStatus } = await moduleAt("../lib/xmux/git-status.js", ["readGitStatus"], { exec });
+  const { readGitFooter } = await moduleAt("../mods/xmux-status/git-footer.js", ["readGitFooter"], { exec, readGitStatus });
+  assert.deepEqual(await readGitFooter("/project", "remote"), {
+    branch: "topic", oid: "abcdef0", ahead: 2, behind: 1,
+    conflicted: true, modified: true, untracked: true, add: 5, del: 2,
+  });
+  assert.ok(calls.every(([, , options]) => options.cwd === "/project" && options.on === "remote"));
+  assert.deepEqual(calls[1][1].slice(-3), ["--numstat", "HEAD", "--"]);
+
+  reports.push({ code: 0, stdout: "# branch.oid (initial)\0# branch.head main\0? new.txt\0" });
+  assert.equal((await readGitFooter("/new", null)).untracked, true);
+  assert.equal(calls.length, 3);
+});
+
+test("Git footer ignores results for a checkout the user has left", async () => {
+  const old = deferred();
+  const updates = [];
+  let workspace = { id: "a", folder: "/project", machine: "remote", branch: "main" };
+  const { GitFooter } = await moduleAt("../mods/xmux-status/git-footer.js", ["GitFooter"], {
+    activeWorkspace: () => workspace,
+    window: () => ({ active: true }),
+    peekQuery: () => undefined,
+    cachedQuery: (key) => key.includes("remote") ? old.promise : Promise.resolve({ branch: "topic" }),
+  });
+  const git = new GitFooter();
+  const cx = { notify() {}, spawn: (fn) => updates.push(fn(cx)) };
+  git.refresh(cx);
+  git.refresh(cx);
+  assert.equal(updates.length, 1);
+  workspace = { id: "b", folder: "/project", machine: null, branch: "topic" };
+  git.refresh(cx);
+  await updates[1];
+  old.resolve({ branch: "main" });
+  await updates[0];
+  assert.deepEqual(git.status, { branch: "topic" });
+});
+
 test("the tab bar reserves only the space still occupied by macOS controls", async () => {
   const { tabBarInset } = await moduleAt("../mods/xmux-tabs/views/tab-bar.js", ["tabBarInset"]);
   const sidebar = { id: "sidebar", size: { px: 48 } };
