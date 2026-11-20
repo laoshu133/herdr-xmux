@@ -1,7 +1,7 @@
 import { View, div, svg } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { spaces, agents, terminals, focused, theme, run, shared, notify, window, keys, nextCommand } from "herdr";
-import { openTerminalTab, splitTerminal } from "./shared/context.js";
+import { activeWorkspace, openTerminalTab, splitTerminal } from "./shared/context.js";
 import { ReopenTab } from "./reopen.js";
 import { QuickDialog } from "./quick-dialog.js";
 import { GitFooter } from "./git-footer.js";
@@ -14,7 +14,7 @@ export default class WorkspaceStatus extends View {
     this.quickDialog.init();
     this.gitFooter = new GitFooter();
     this.gitFooter.refresh(cx);
-    cx.timer.every(1000, (cx) => this.gitFooter.refresh(cx));
+    cx.timer.every(250, (cx) => this.gitFooter.refresh(cx));
     cx.spawn(async (cx) => {
       for (;;) {
         const command = await nextCommand();
@@ -107,13 +107,13 @@ export default class WorkspaceStatus extends View {
     return key ? `${key}  commands` : "commands";
   }
 
-  render() {
+  render(cx) {
     const t = theme();
-    const space = spaces().find(s => s.active);
+    const space = activeWorkspace({ remember: false });
     const list = agents();
     const needs = list.filter(a => a.status === "blocked").length;
     const label = (icon, text) => h_flex().gap(5).items_center().child(svg(`mods/workspace-chrome/${icon}.svg`).size(12)).child(text);
-    const git = this.gitFooter.render(space, t);
+    const git = this.gitFooter.render(space, t, cx);
     return h_flex().size_full().px(12).gap(14).items_center().bg(t.chrome).border_t(1).border_color(t.border).text_size(11).text_color(t.muted)
       .child(label(space?.machine ? "server" : "monitor", space?.machine ?? "This computer"))
       .when(Boolean(git), el => el.child(git))

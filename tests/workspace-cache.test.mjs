@@ -36,26 +36,35 @@ test("PRs and the sidebar use the same CLI and host overrides", async () => {
   assert.deepEqual(invalid.settings.hosts, []);
 });
 
-test("Git footer keeps Pi's status markers and counts net staged and unstaged edits", async () => {
-  const reports = [
-    { code: 0, stdout: ["# branch.oid abcdef0", "# branch.head topic", "# branch.ab +2 -1",
-      "1 MM staged-and-unstaged", "u UU conflict", "? untracked\nfile", ""].join("\0") },
-    { code: 0, stdout: "5\t2\ttracked.txt\n-\t-\timage.png\n" },
-  ];
+test("Git footer reads all status markers in a single Git command", async () => {
   const calls = [];
-  const exec = async (...args) => { calls.push(args); return reports.shift(); };
+  const exec = async (...args) => {
+    calls.push(args);
+    return { code: 0, stdout: ["# branch.oid abcdef0", "# branch.head topic", "# branch.ab +2 -1",
+      "1 MM staged-and-unstaged", "u UU conflict", "? untracked\nfile", ""].join("\0") };
+  };
   const { readGitStatus } = await moduleAt("../lib/xmux/git-status.js", ["readGitStatus"], { exec });
-  const { readGitFooter } = await moduleAt("../mods/xmux-status/git-footer.js", ["readGitFooter"], { exec, readGitStatus });
-  assert.deepEqual(await readGitFooter("/project", "remote"), {
-    branch: "topic", oid: "abcdef0", ahead: 2, behind: 1,
-    conflicted: true, modified: true, untracked: true, add: 5, del: 2,
+  const { GitFooter } = await moduleAt("../mods/xmux-status/git-footer.js", ["GitFooter"], {
+    activeWorkspace: () => ({ folder: "/project", machine: "remote", branch: "topic" }),
+    readGitStatus,
+    peekQuery: () => undefined,
+    cachedQuery: (_key, _ttl, load) => load(),
   });
-  assert.ok(calls.every(([, , options]) => options.cwd === "/project" && options.on === "remote"));
-  assert.deepEqual(calls[1][1].slice(-3), ["--numstat", "HEAD", "--"]);
-
-  reports.push({ code: 0, stdout: "# branch.oid (initial)\0# branch.head main\0? new.txt\0" });
-  assert.equal((await readGitFooter("/new", null)).untracked, true);
-  assert.equal(calls.length, 3);
+  const footer = new GitFooter();
+  const jobs = [];
+  const cx = { notify() {}, spawn: (job) => jobs.push(job(cx)) };
+  footer.refresh(cx);
+  await Promise.all(jobs);
+  assert.deepEqual(footer.status, {
+    branch: "topic", oid: "abcdef0", ahead: 2, behind: 1,
+    conflicted: true, modified: true, untracked: true,
+  });
+  assert.equal(calls.length, 1);
+  const [[command, args, options]] = calls;
+  assert.equal(command, "git");
+  assert.ok(args.includes("status"));
+  assert.equal(options.cwd, "/project");
+  assert.equal(options.on, "remote");
 });
 
 test("Git footer ignores results for a checkout the user has left", async () => {
@@ -79,6 +88,32 @@ test("Git footer ignores results for a checkout the user has left", async () => 
   old.resolve({ branch: "main" });
   await updates[0];
   assert.deepEqual(git.status, { branch: "topic" });
+});
+
+test("switching Space renders its cached Git markers and schedules an immediate refresh", async () => {
+  const first = { folder: "/first", branch: "main" };
+  const next = { folder: "/next", branch: "main", machine: "remote" };
+  const text = [], scheduled = [];
+  const node = new Proxy({}, { get: (_target, key) => (child) => {
+    if (key === "child" && typeof child === "string") text.push(child);
+    return node;
+  } });
+  const key = JSON.stringify(["status-git", "remote", "/next", "main"]);
+  const { GitFooter } = await moduleAt("../mods/xmux-status/git-footer.js", ["GitFooter"], {
+    div: () => node, svg: () => node, h_flex: () => node,
+    activeWorkspace: () => first,
+    peekQuery: (candidate) => candidate === key ? { branch: "main", ahead: 5 } : undefined,
+  });
+  const footer = new GitFooter();
+  footer.key = JSON.stringify(["status-git", null, "/first", "main"]);
+  footer.status = { branch: "main", behind: 72 };
+  const cx = { timer: { after: (delay, callback) => scheduled.push([delay, callback]) } };
+  footer.render(next, {}, cx);
+  footer.render(next, {}, cx);
+  assert.equal(scheduled.length, 1);
+  assert.equal(scheduled[0][0], 0);
+  assert.ok(text.includes("⇡5"));
+  assert.ok(!text.includes("⇣72"));
 });
 
 test("the tab bar reserves only the space still occupied by macOS controls", async () => {

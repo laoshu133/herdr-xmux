@@ -58,8 +58,8 @@ export function terminalDirectory(space, ps = panes(), current = focused()) {
     ps.find((p) => p.tab === active && p.cwd)?.cwd)) || spaceDirectory(space, ps);
 }
 
-// Call from init/timers/events, never render: publishing is a state change.
-export function activeWorkspace() {
+// Rendering can read the workspace without publishing it.
+export function activeWorkspace({ remember = true } = {}) {
   const list = spaces();
   const sp = list.find((s) => s.active);
   if (!sp) return null;
@@ -72,7 +72,7 @@ export function activeWorkspace() {
   const folder = knownRoot(current?.cwd || previewDirectory(sp, ps) || primary?.cwd || previous?.folder || spaceDirectory(sp, ps), sp.machine);
   const branch = current ? (current.branch ?? sp.branch ?? "") : (previous?.branch ?? primary?.branch ?? sp.branch);
   const next = { folder, branch, on: machine(sp.machine) };
-  if (JSON.stringify(previous) !== JSON.stringify(next)) {
+  if (remember && JSON.stringify(previous) !== JSON.stringify(next)) {
     const live = new Set(list.map((s) => s.id));
     setShared(WORKSPACES, { ...Object.fromEntries(Object.entries(saved).filter(([id]) => live.has(id))), [sp.id]: next });
   }
