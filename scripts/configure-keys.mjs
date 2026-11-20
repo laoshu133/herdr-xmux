@@ -13,6 +13,7 @@ const mappings = {
   "cmd-d": ["xmux-status.split-right", "pane.split:right"],
   "cmd-shift-d": ["xmux-status.split-down", "pane.split:down"],
   "cmd-p": ["mod.open:xmux-picker", "mod.open:picker"],
+  "alt-f": ["xmux-tabs.button:files"],
   "cmd-ctrl-left": ["xmux-sidebar.show-spaces"],
   "cmd-ctrl-right": ["xmux-sidebar.show-agents"],
   "cmd-ctrl-up": ["xmux-status.cross-tab-prev"],

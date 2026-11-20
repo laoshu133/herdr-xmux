@@ -35,6 +35,7 @@ preserves custom bindings.
 | Shortcut | Action |
 | --- | --- |
 | `Cmd+P` | Open Go to. |
+| `Alt+F` (`Option+F` on macOS) | Toggle Files. |
 | `Option+Cmd+←/→/↑/↓` | Focus a split pane in that direction. |
 | `Ctrl+Cmd+←/→` | Select Spaces / Agents. |
 | `Ctrl+Cmd+↑/↓` | Cycle through tabs in Spaces or Agents in list order. |
@@ -45,6 +46,23 @@ preserves custom bindings.
 Click `+` for a terminal or Shift-click it for the terminal and Agent menu.
 The sidebar collapses to a 48px rail. On macOS the tabs clear the window
 buttons when the sidebar is collapsed or hidden.
+
+### Right panel commands
+
+Bind these commands under `layout:XMux` in `keys.json`. Each command opens its
+panel or switches to it. Invoking it again while that panel is visible hides
+the right panel, just like clicking its toolbar button again.
+
+| Panel | Command |
+| --- | --- |
+| Files | `xmux-tabs.button:files` |
+| Changes | `xmux-tabs.button:changes` |
+| PRs | `xmux-tabs.button:prs` |
+| Issues | `xmux-tabs.button:issues` |
+
+If your macOS input method intercepts `Option+F`, open Herdr's **Settings →
+Keyboard** and set **Option as Alt** to **On** (`"option_as_alt": "on"` in
+`settings.json`). This makes both Option keys act as Alt in Herdr.
 
 ### Optional macOS configuration
 
