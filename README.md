@@ -39,7 +39,7 @@ preserves custom bindings.
 | `Option+Cmd+←/→/↑/↓` | Focus a split pane in that direction. |
 | `Ctrl+Cmd+←/→` | Select Spaces / Agents. |
 | `Ctrl+Cmd+↑/↓` | Cycle through tabs in Spaces or Agents in list order. |
-| `Ctrl+Cmd+J` | Focus the first blocked or errored Agent, then the first unread completed Agent once all blockers clear. Herdr notifies you when none need attention. |
+| `Ctrl+Cmd+S` | Focus the first blocked or errored Agent, then the first unread completed Agent once all blockers clear. Herdr notifies you when none need attention. |
 | `Cmd+T` | Open a terminal in the active directory. |
 | `Cmd+D` / `Shift+Cmd+D` | Split right / down. |
 

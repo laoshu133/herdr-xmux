@@ -18,7 +18,6 @@ const mappings = {
   "cmd-ctrl-right": ["xmux-sidebar.show-agents"],
   "cmd-ctrl-up": ["xmux-status.cross-tab-prev"],
   "cmd-ctrl-down": ["xmux-status.cross-tab-next"],
-  "cmd-ctrl-j": ["xmux-status.focus-attention"],
 };
 const directions = ["left", "right", "up", "down"];
 let changed = false;
@@ -31,6 +30,22 @@ for (const [key, [action, builtin]] of Object.entries(mappings)) {
   }
   section[key] = action;
   changed = true;
+}
+const attentionAction = "xmux-status.focus-attention";
+const attentionKey = "cmd-ctrl-s";
+const attentionBinding = section[attentionKey] ?? section["ctrl-cmd-s"] ??
+  keys.global?.[attentionKey] ?? keys.global?.["ctrl-cmd-s"];
+if (attentionBinding === undefined || attentionBinding === attentionAction) {
+  if (attentionBinding === undefined) {
+    section[attentionKey] = attentionAction;
+    changed = true;
+  }
+  if (section["cmd-ctrl-j"] === attentionAction) {
+    delete section["cmd-ctrl-j"];
+    changed = true;
+  }
+} else {
+  console.warn(`Kept personal XMux binding ${attentionKey}: ${attentionBinding}`);
 }
 for (const direction of directions) {
   const optionKey = `cmd-alt-${direction}`;
