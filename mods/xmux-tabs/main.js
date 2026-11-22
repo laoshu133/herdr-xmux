@@ -19,7 +19,7 @@ import { tabBarMethods } from "./views/tab-bar.js";
 import { menuMethods } from "./views/menu.js";
 
 // Preferences a person may change in the installed mod.json under `settings`.
-const DEFAULT_SETTINGS = { tabs: { max_width: 240, drag_delay: "400ms" }, menu: { width: 240 } };
+const DEFAULT_SETTINGS = { tabs: { max_width: 320, drag_delay: "400ms" }, menu: { width: 240 } };
 
 const DEFAULTS = {
   rememberPanels: { container: "panel", stack: "panel-body" },

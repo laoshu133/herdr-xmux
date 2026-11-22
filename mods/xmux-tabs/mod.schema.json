@@ -72,7 +72,7 @@
               "minimum": 60,
               "x-step": 10,
               "x-unit": "px",
-            "default": 240
+              "default": 320
             },
             "drag_delay": {
               "title": "Drag delay",

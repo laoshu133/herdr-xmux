@@ -9,6 +9,8 @@ import { automaticTabTitle, tabLead } from "../shared/tab-title.js";
 const CHAR_WIDTH = 8; // Roughly, to size the drag preview.
 const TAB_HEIGHT = 36;
 const TAB_GAP = 0;
+const CLOSE_BUTTON_WIDTH = 18;
+const NEW_TAB_GAP = 6;
 const TOOLBAR_GAP = 4;
 const BAR_HEIGHT = TAB_HEIGHT;
 const BAR_PADDING = 0;
@@ -73,14 +75,15 @@ export const tabBarMethods = {
     const icon = this.tabIcon(tab, ps, t);
     const drag = this.tabDrag;
     const lead = tabLead(tab, ps, focused());
-    const title = automaticTabTitle(tab, lead, shared("pane-heads")?.[lead?.pane]?.title);
-    const label = title;
+    const label = automaticTabTitle(tab, lead, shared("pane-heads")?.[lead?.pane]?.title);
+    const showClose = tab.active || this.hoveredTab === tab.id;
     return h_flex()
       .id(`tab-${tab.id}`)
       .relative()
       .h(TAB_HEIGHT)
-      .px(10)
-      .gap(7)
+      .pl(10)
+      .pr(4)
+      .gap(4)
       .rounded(0)
       .items_center()
       .flex_none()
@@ -90,6 +93,11 @@ export const tabBarMethods = {
       .text_color(tab.active ? t.foreground : t.muted)
       .cursor_pointer()
       .hover((s) => s.bg(t.hover).border_color(tab.active ? t.accent : t.input))
+      .on_hover((hovered, cx) => {
+        if (hovered === (this.hoveredTab === tab.id)) return;
+        this.hoveredTab = hovered ? tab.id : null;
+        cx.notify();
+      })
       .when(drag?.active && drag.id === tab.id, (el) => el.opacity(0.35))
       .on_mouse_down("left", (event, cx) => this.beginTabDrag(tab, event, cx))
       .on_mouse_move((event, cx) => this.hoverTab(tab, event, cx))
@@ -107,9 +115,8 @@ export const tabBarMethods = {
       .when(Boolean(icon), (el) => el.child(icon))
       .child(
         div()
-          .flex_1()
+          .flex_auto()
           .min_w(0)
-          .max_w(this.settings.tabs.max_width)
           .truncate()
           .tooltip(label)
           .child(tab.zoomed ? `${label} Z` : label),
@@ -120,7 +127,10 @@ export const tabBarMethods = {
       .when(["blocked", "done"].includes(tab.status), (el) =>
         el.child(div().size(6).rounded(3).bg(t[tab.status])),
       )
-      .when(tab.active, (el) => el.child(this.closeTabButton(tab)))
+      // Reserve the same space so showing the button never shifts adjacent tabs.
+      .child((showClose ? this.closeTabButton(tab) : div().flex_none())
+        .w(CLOSE_BUTTON_WIDTH)
+        .h(22))
       .when(drag?.active && drag.target?.id === tab.id, (el) =>
         el.child(DropLine(drag.target.after)),
       )
@@ -258,6 +268,7 @@ export const tabBarMethods = {
       if (event.modifiers?.shift) openNewMenu(space);
       else openTerminalTab(space, {}, focused());
     })
+      .when(tabs.length > 0, (el) => el.ml(NEW_TAB_GAP))
       .on_mouse_move((event, cx) => {
         if (tabs.length) this.hoverTab(tabs.at(-1), asLast(event), cx);
       })
