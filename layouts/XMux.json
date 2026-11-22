@@ -150,7 +150,7 @@
           "id": "work-body",
           "type": "row",
           "gap": 1,
-          "background": "raised",
+          "background": "background",
           "children": [
             {
               "id": "main",
@@ -226,7 +226,7 @@
               "size": {
                 "px": 0.5
               },
-              "background": "raised"
+              "background": "background"
             }
           ],
           "padding": [
