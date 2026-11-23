@@ -16,6 +16,18 @@
       "type": "string",
       "description": "The mod's name, as Herdr shows it."
     },
+    "link_handlers": {
+      "description": "File and URL patterns Herdr can send to link.js.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "pattern"],
+        "properties": {
+          "kind": { "enum": ["file", "url"] },
+          "pattern": { "type": "string" }
+        }
+      }
+    },
     "place": {
       "enum": [
         "left",

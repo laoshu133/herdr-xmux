@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { promisify } from "node:util";
 import test from "node:test";
 import * as hostingCli from "../lib/xmux/hosting-cli.js";
 
@@ -763,6 +766,66 @@ test("rapid Files clicks bind same-named previews to distinct tabs and reselect 
   openMethods.openFile(first);
   openMethods.openFile(second);
   assert.deepEqual(requests, [["tab.select", { id: "tab-0" }], ["tab.select", { id: "tab-1" }]]);
+});
+
+test("terminal links use the clicked Space and machine and share the Files tab registry", async () => {
+  const folder = await mkdtemp(tmpdir() + "/xmux-links-");
+  try {
+    const path = (await realpath(folder)) + "/note #1.md";
+    await writeFile(path, "# Link preview");
+    const registry = new Map();
+    const requests = [];
+    const notices = [];
+    const currentSpaces = [{ id: "local", machine: null, active: true }, { id: "m4/other", machine: "m4" }];
+    const spaces = () => currentSpaces;
+    const { openFilePreview } = await moduleAt("../mods/xmux-files/actions/open.js", ["openFilePreview"], {
+      baseName: (name) => name.split("/").pop(), spaces, panes: () => [],
+      shared: (key) => registry.get(key), setShared: (key, value) => registry.set(key, value),
+      run: (name, args) => requests.push([name, args]),
+    });
+    const { handleLink } = await moduleAt("../mods/xmux-files/link.js", ["handleLink"], {
+      spaces, openFilePreview, isImage: () => false, parentOf: (name) => name.slice(0, name.lastIndexOf("/")),
+      viewable: (text) => ({ text }), notify: (notice) => notices.push(notice),
+      exec: async (command, args, { on }) => {
+        assert.equal(on, "m4");
+        return promisify(execFile)(command, args).then(({ stdout }) => ({ code: 0, stdout }));
+      },
+      readTextFile: async (name, { on }) => {
+        assert.equal(on, "m4");
+        return readFile(name, "utf8");
+      },
+    });
+    const source = { space: "m4/other", machine: "m4", cwd: folder };
+    assert.equal(await handleLink({ link: { kind: "file", raw: "./note #1.md", path: "/wrong.md" }, source }), "handled");
+    assert.equal(await handleLink({ link: { kind: "file", raw: "file://" + encodeURI(path).replace("#", "%23") }, source }), "handled");
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0][0], "tab.new");
+    assert.equal(requests[0][1].space, source.space);
+    assert.deepEqual(requests[0][1].props.file, { path, root: await realpath(folder), on: "m4" });
+    assert.deepEqual(notices, []);
+  } finally {
+    await rm(folder, { recursive: true });
+  }
+});
+
+test("terminal links pass editor positions and provide feedback for unavailable remote paths", async () => {
+  const notices = [];
+  const { handleLink } = await moduleAt("../mods/xmux-files/link.js", ["handleLink"], {
+    spaces: () => [{ id: "s1" }, { id: "m4/s1", machine: "m4" }],
+    exec: async () => ({ code: 1, stdout: "" }),
+    notify: (notice) => notices.push(notice.body),
+    openFilePreview: () => assert.fail("A rejected link must not open a preview"),
+  });
+  const source = { space: "s1", machine: null, cwd: "/repo" };
+  assert.equal(await handleLink({ link: { kind: "url", raw: "vscode://file/repo/a.ts:42" }, source }), "pass");
+  assert.equal(await handleLink({ link: { kind: "file", raw: "./a.ts:42:7", path: "/repo/a.ts" }, source }), "pass");
+  assert.equal(await handleLink({ link: { kind: "file", raw: "./gone.md", path: "/repo/gone.md" }, source }), "pass");
+  assert.deepEqual(notices, []);
+  assert.equal(await handleLink({
+    link: { kind: "file", raw: "./gone.md", path: null },
+    source: { ...source, space: "m4/s1", machine: "m4" },
+  }), "pass");
+  assert.deepEqual(notices, ["File does not exist on m4."]);
 });
 
 test("the popup stays alive until an asynchronous editor launch completes", async () => {

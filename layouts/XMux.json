@@ -1,5 +1,6 @@
 {
   "id": "root",
+  "link_handlers": ["xmux-files"],
   "cloned_from": {
     "name": "estro",
     "version": "local"

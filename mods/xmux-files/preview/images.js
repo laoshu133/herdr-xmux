@@ -16,7 +16,8 @@ export const loadDir = (key) => `${LOADS}/${key}`;
 export const PROBE_SCRIPT = [
   'p=$1',
   'if [ ! -e "$p" ]; then echo -1; exit 0; fi',
-  'if stat -c%s / >/dev/null 2>&1; then stat -L -c "%s %Y" "$p"; else stat -L -f "%z %m" "$p"; fi',
+  '[ -f "$p" ] && [ -r "$p" ] || { echo "Not a readable regular file" >&2; exit 1; }',
+  'if stat -c%s / >/dev/null 2>&1; then stat -L -c "%s %Y" "$p"; else stat -L -f "%z %m" "$p"; fi || exit 1',
   'head -c 65536 "$p" | od -An -v -tx1',
 ].join("\n");
 // `x <src> <part> <file> <size> [<target>]`: copies into the part file, then moves it into place (one atomic
@@ -50,7 +51,7 @@ export const LOADS_LIST_SCRIPT = 'cd -- "$1" 2>/dev/null && ls -1';
 
 const oneLine = (text) => String(text ?? "").split("\n").map((l) => l.trim()).find(Boolean);
 const timedOut = (e) => /time[d ]*-?\s*out/i.test(String(e?.message ?? e));
-const MAGIC = { png: [0x89, 0x50, 0x4e, 0x47], jpeg: [0xff, 0xd8, 0xff], gif: [0x47, 0x49, 0x46, 0x38] };
+const MAGIC = { png: [0x89, 0x50, 0x4e, 0x47], jpeg: [0xff, 0xd8, 0xff], gif: [0x47, 0x49, 0x46, 0x38], bmp: [0x42, 0x4d] };
 const at = (b, i, s) => [...s].every((c, k) => b[i + k] === c.charCodeAt(0));
 const u16 = (b, i) => b[i] | (b[i + 1] << 8), u24 = (b, i) => u16(b, i) | (b[i + 2] << 16);
 const b16 = (b, i) => (b[i] << 8) | b[i + 1], b32 = (b, i) => ((b[i] << 24) | (b[i + 1] << 16) | (b[i + 2] << 8) | b[i + 3]) >>> 0;
@@ -174,7 +175,11 @@ export function dimensions(bytes, { svgCheck = true } = {}) {
     }
   } else if (f === "png") [w, h] = [b32(bytes, 16), b32(bytes, 20)];
   else if (f === "gif") [w, h] = [u16(bytes, 6), u16(bytes, 8)];
-  else if (f === "webp") {
+  else if (f === "bmp") {
+    const headerSize = i32(bytes, 14);
+    if (headerSize === 12 && bytes.length >= 26) [w, h] = [u16(bytes, 18), u16(bytes, 20)];
+    else if (headerSize >= 40 && bytes.length >= 54) [w, h] = [i32(bytes, 18), Math.abs(i32(bytes, 22))];
+  } else if (f === "webp") {
     if (at(bytes, 12, "VP8X")) [w, h] = [u24(bytes, 24) + 1, u24(bytes, 27) + 1];
     else if (at(bytes, 12, "VP8L")) { const v = b32(bytes.slice(21, 25).reverse(), 0); [w, h] = [(v & 0x3fff) + 1, ((v >>> 14) & 0x3fff) + 1]; }
     else if (at(bytes, 12, "VP8 ")) [w, h] = [u16(bytes, 26) & 0x3fff, u16(bytes, 28) & 0x3fff];
@@ -305,6 +310,26 @@ export function createCache({ exec, hc, unlink, rand = () => Math.random().toStr
   return { fetch, evict };
 }
 
+// Validate the same header and limits for a terminal click and for the viewer.
+export async function probeImage(exec, { on, path, maxImage = MAX_IMAGE, svgCheck = true, timeout }) {
+  if (badSpelling(path)) return { error: 'Path must not contain empty, "." or ".." components' };
+  const ext = extOf(path), cannot = (e) => ({ error: `Cannot load this image: ${oneLine(e?.message ?? e) ?? "unknown error"}` });
+  let probe;
+  try { probe = await exec("sh", ["-c", PROBE_SCRIPT, "x", path], { on, timeout }); } catch (e) { return cannot(e); }
+  if (probe.code !== 0) return cannot(probe.stderr || `exit code ${probe.code}`);
+  const [first, ...rest] = probe.stdout.split("\n"), [size, mtime] = first.trim().split(" ").map(Number);
+  if (!Number.isFinite(mtime) || !(size >= 0)) return { error: "This file is no longer available", final: true };
+  if (ext === "svg" && size > maxImage) return { error: `File is larger than ${mb(maxImage)} MB · no preview`, final: true }; // never drawn, never read as text
+  const bytes = Uint8Array.from(rest.join(" ").match(/\b[0-9a-f]{2}\b/g) ?? [], (h) => parseInt(h, 16));
+  const kind = sniff(bytes, ext);
+  if (!kind) return { error: `File header is not ${ext.toUpperCase()} · no preview` };
+  if (kind === "svg" && svgCheck && size > bytes.length) return { error: "SVG is larger than the 64 KiB checked · no preview" };
+  const dims = dimensions(bytes, { svgCheck });
+  if (!dims) return { error: "Image size unknown · no preview" };
+  if (dims.width * dims.height > 100e6) return { error: "Image has more than 100 megapixels · no preview", final: true };
+  return { kind, size, mtime, dims };
+}
+
 export function createImages({ exec, hc, appHome, rand = () => Math.random().toString(36).slice(2, 8) }) {
   const exists = (path) => exec("test", ["-f", path], { on: null }).then((r) => r.code === 0, () => false);
   const unlink = (path) => exec("rm", ["-f", "--", path], { on: null });
@@ -314,21 +339,9 @@ export function createImages({ exec, hc, appHome, rand = () => Math.random().toS
   // maxImage, cacheLimit: bytes from the settings (image_max_mb, image_cache_mb), svgCheck: svg_check; per call, so a
   // changed setting applies to the next file. ssh: the SSH settings for the download from a machine (cache.fetch).
   async function load({ on, path, maxImage = MAX_IMAGE, cacheLimit = CACHE_LIMIT, svgCheck = true, ssh }) {
-    if (badSpelling(path)) return { error: 'Path must not contain empty, "." or ".." components' };
-    const ext = extOf(path), cannot = (e) => ({ error: `Cannot load this image: ${oneLine(e?.message ?? e) ?? "unknown error"}` });
-    let probe;
-    try { probe = await exec("sh", ["-c", PROBE_SCRIPT, "x", path], { on }); } catch (e) { return cannot(e); }
-    if (probe.code !== 0) return cannot(probe.stderr || `exit code ${probe.code}`);
-    const [first, ...rest] = probe.stdout.split("\n"), [size, mtime] = first.trim().split(" ").map(Number);
-    if (!(size >= 0)) return { error: "This file is no longer available", final: true };
-    if (ext === "svg" && size > maxImage) return { error: `File is larger than ${mb(maxImage)} MB · no preview`, final: true }; // never drawn, never read as text
-    const bytes = Uint8Array.from(rest.join(" ").match(/\b[0-9a-f]{2}\b/g) ?? [], (h) => parseInt(h, 16));
-    const kind = sniff(bytes, ext);
-    if (!kind) return { error: `File header is not ${ext.toUpperCase()} · no preview` };
-    if (kind === "svg" && svgCheck && size > bytes.length) return { error: "SVG is larger than the 64 KiB checked · no preview" };
-    const dims = dimensions(bytes, { svgCheck });
-    if (!dims) return { error: "Image size unknown · no preview" };
-    if (dims.width * dims.height > 100e6) return { error: "Image has more than 100 megapixels · no preview", final: true };
+    const probe = await probeImage(exec, { on, path, maxImage, svgCheck });
+    if (probe.error) return probe;
+    const { kind, size, mtime, dims } = probe;
     const key = cacheKey({ on, path, size, mtime });
     const name = `${key}.${kind}`, rel = `${loadDir(key)}/${name}`, loaded = `${appHome()}/${rel}`;
     // A copy in loads/<key>/ wins at any size: the Load click (or the transfer job) put it there, e.g. after a timed-out download.

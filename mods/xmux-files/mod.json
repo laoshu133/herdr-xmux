@@ -3,6 +3,12 @@
   "version": "1.7.1",
   "place": "none",
   "title": "XMux Files",
+  "link_handlers": [
+    {
+      "kind": "file",
+      "pattern": "(?i)\\.(png|jpe?g|gif|webp|bmp|svg|md|markdown|txt|log|csv|tsv|jsonc?|ya?ml|toml|ini|conf|xml|html?|css|scss|sql|[cm]?js|jsx|[cm]?ts|tsx|py|rs|go|sh|zsh|bash|fish|rb|php|java|kt|swift|c|h|cc|cpp|hpp|cs|vue|svelte)\\z"
+    }
+  ],
   "cloned_from": {
     "name": "better-files",
     "version": "0.1.15"

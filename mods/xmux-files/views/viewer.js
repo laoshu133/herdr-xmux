@@ -1,7 +1,7 @@
 // A file in the centre pane, read-only, following the file as it changes on disk. Editing
 // belongs in the code editor it can open.
 import { div, image } from "gpui-kit";
-import { h_flex, v_flex } from "gpui-base";
+import { h_flex, v_flex, Scrollbar } from "gpui-base";
 import { exec, layout, panes, readTextFile, setShared, shared, theme } from "herdr";
 import {
   baseName,
