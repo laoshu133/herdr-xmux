@@ -77,14 +77,17 @@ export class QuickDialog {
 
   closeCurrent() {
     const state = shared(STATE);
+    const target = focused();
     // A status-mod reload can forget the overlay id while its terminal still
     // holds focus. Never let Cmd+W fall through to the underlying tab then.
-    if (!state?.terminal || focused()?.terminal !== state.terminal) {
-      run("tab.close");
+    if (state?.terminal && target?.terminal === state.terminal) {
+      run("terminal.kill", { terminal: state.terminal });
+      if (state.overlay) closeOverlay(state.overlay);
+      setShared(STATE, null);
       return;
     }
-    run("terminal.kill", { terminal: state.terminal });
-    if (state.overlay) closeOverlay(state.overlay);
-    setShared(STATE, null);
+    // Use Herdr's close-key routing so an open dialog gets the key even
+    // when its terminal no longer holds keyboard focus.
+    window.dispatch_action("tab.close");
   }
 }

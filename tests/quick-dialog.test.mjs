@@ -6,7 +6,7 @@ import test from "node:test";
 // keyboard focus still require the actual app; these mocks never start hc.
 const source = await readFile(new URL("../mods/xmux-status/quick-dialog.js", import.meta.url), "utf8");
 const imports = source.match(/^import \{ (.+) \} from "herdr";/)[1];
-const load = new Function("api", source.replace(/^import .+;\n/, `const { ${imports} } = api;\n`).replace("export class", "class") + "\nreturn QuickDialog;");
+const load = new Function("api", "window", source.replace(/^import .+;\n/, `const { ${imports} } = api;\n`).replace("export class", "class") + "\nreturn QuickDialog;");
 const STATE = "xmux.quick-dialog";
 const owner = "/config/app";
 
@@ -38,7 +38,7 @@ function fixture() {
       return { code: 0, stdout: JSON.stringify(terminal) };
     },
   };
-  const controller = new (load(api))();
+  const controller = new (load(api, { dispatch_action: name => calls.push(["key-action", name]) }))();
   controller.init();
   return { controller, calls, live, state: () => values.get(STATE), setState: value => values.set(STATE, value), focus: value => { focus = value; }, reply: value => { reply = value; } };
 }
@@ -115,16 +115,17 @@ test("closing a focused quick shell leaves the underlying tab alone", async () =
   f.focus({ terminal: "t2", pane: null });
   f.controller.closeCurrent();
   assert.ok(f.calls.some(c => c[0] === "terminal.kill" && c[1].terminal === "t2"));
-  assert.ok(!f.calls.some(c => c[0] === "tab.close"));
+  assert.ok(!f.calls.some(c => c[0] === "key-action"));
   assert.equal(f.state(), null);
 });
 
-test("Cmd+W keeps its tab behavior when the background tab has focus", async () => {
+test("Cmd+W delegates to Herdr's close key for both a tab and an overlay", () => {
   const f = fixture();
-  await f.controller.toggle();
-  f.controller.closeCurrent();
-  assert.ok(f.calls.some(c => c[0] === "tab.close"));
-  assert.ok(!f.calls.some(c => c[0] === "terminal.kill"));
+  for (const target of [{ terminal: "t1", pane: "p1" }, { terminal: "m4/t3", pane: null }]) {
+    f.focus(target);
+    f.controller.closeCurrent();
+  }
+  assert.deepEqual(f.calls, [["key-action", "tab.close"], ["key-action", "tab.close"]]);
 });
 
 test("hiding a background window does not undo the user's pane navigation", async () => {
@@ -166,7 +167,7 @@ test("Cmd+W after a controller reload still cannot close the underlying tab", as
   f.focus({ terminal: "t2", pane: null });
   f.controller.closeCurrent();
   assert.ok(f.calls.some(c => c[0] === "terminal.kill"));
-  assert.ok(!f.calls.some(c => c[0] === "tab.close"));
+  assert.ok(!f.calls.some(c => c[0] === "key-action"));
 });
 
 test("a terminal from another app configuration is not adopted", async () => {

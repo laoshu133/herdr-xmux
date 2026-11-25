@@ -35,6 +35,8 @@ export default class QuickDialogTitlebar extends View {
     const title = floatingTerminalTitle(terminal);
     return h_flex().id("quick-dialog-titlebar").size_full().px(8).gap(8).items_center().bg(t.chrome)
       .border_b(1).border_color(t.border).text_size(12).text_color(t.foreground)
+      // Keep the dialog frame from taking focus from its terminal.
+      .on_mouse_down("left", (_event, cx) => cx.stop_propagation())
       .child(svg("icons/shell.svg").size(14).flex_none().text_color(t.muted))
       .child(div().min_w(0).flex_1().truncate().tooltip(title).child(title))
       .child(this.button(t, "quick-dialog-hide", "−", "Hide terminal (⌘`)", () => this.dismiss(false)))
