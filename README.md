@@ -92,9 +92,9 @@ Merge these entries into your personal `keys.json`.
   `Cmd+W` closes the focused quick terminal or the current tab.
 - `Cmd+R` sends a form feed for shell screen clearing.
 
-Set `"pane_scrollbars": false` in Herdr's `settings.json` to hide the terminal
-pane scrollbar thumb. For automatic quick-terminal focus on Herdr 0.1.16, see
-the [optional overlay focus patch](patches/README.md).
+Herdr focuses the quick terminal when its dialog opens and restores the
+underlying pane when it closes. Set `"pane_scrollbars": false` in Herdr's
+`settings.json` to hide the terminal pane scrollbar thumb.
 
 ## Add to chat
 

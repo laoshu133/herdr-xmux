@@ -8,7 +8,7 @@
 // git/reads.js reads from Git, git/model.js parses its output, views/ui.js holds every look.
 import { View } from "gpui-kit";
 import { TextareaState } from "gpui-base";
-import { props, shared, setShared, nextCommand, layout, run, notify, closeOverlay } from "herdr";
+import { props, shared, setShared, nextCommand, layout, run, notify, closeOverlay, window } from "herdr";
 import { configureQueries, panelShown } from "./shared/query-cache.js";
 import { loadSettings, duration } from "./shared/settings.js";
 import { followFileIcons } from "./shared/file-icons.js";
@@ -174,6 +174,10 @@ class XmuxChanges extends View {
   }
 
   follow(cx) {
+    const active = window()?.active !== false;
+    if (active && this.windowActive === false) this.dirty = true;
+    this.windowActive = active;
+    if (!active) return;
     const shown = this.visible();
     const returning = shown && !this.wasVisible;
     this.wasVisible = shown;

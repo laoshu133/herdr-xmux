@@ -1,6 +1,7 @@
 // Reading the folder tree, and Git's view of it, for the focused pane's folder.
-import { spaces, panes, focused, exec, watchFolder } from "herdr";
+import { spaces, panes, focused, exec, watchFolder, window } from "herdr";
 import { PER_FOLDER, parseStatus, sortEntries } from "./model.js";
+import { resolveGitRoot, readWorktreeStatus, invalidateWorktreeStatus } from "../shared/git-status.js";
 
 // Each read of a folder is bounded, and the names come back null-separated, so no file name
 // can break the list. Adapted from Herdr's shipped Files mod.
@@ -84,32 +85,12 @@ export const readMethods = {
 
   // Writes nothing under .git, or the folder watch would see its own read and refresh again.
   async loadMarks(root, on, token) {
-    const top = await exec("git", ["rev-parse", "--show-toplevel"], { cwd: root, on }).catch(
-      () => null,
-    );
+    const top = await resolveGitRoot(root, on);
     if (this.key !== token) return;
-    if (top?.code !== 0) {
-      this.top = null;
-      this.marks = {};
-      return;
-    }
-    const status = await exec(
-      "git",
-      [
-        "--no-optional-locks",
-        "-c",
-        "core.fsmonitor=false",
-        "status",
-        "--porcelain=v1",
-        "-z",
-        "--no-renames",
-        "--untracked-files=all",
-      ],
-      { cwd: root, on },
-    ).catch(() => null);
+    const scan = top ? await readWorktreeStatus(top, on) : null;
     if (this.key !== token) return;
-    this.top = top.stdout.trim();
-    if (status?.code === 0) this.marks = parseStatus(status.stdout, this.top);
+    this.top = top;
+    this.marks = scan ? parseStatus(scan.porcelain, top) : {};
   },
 
   // A local folder says when it changes; another machine's is read on the timer alone.
@@ -121,7 +102,15 @@ export const readMethods = {
       try {
         while (this.key === key) {
           await watchFolder(root);
-          if (this.key === key) this.refresh(cx);
+          if (this.key !== key) break;
+          const observedAt = Date.now();
+          const revision = this.treeWatchRevision = (this.treeWatchRevision ?? 0) + 1;
+          cx.timer.after(300, (cx) => {
+            if (this.key !== key || this.treeWatchRevision !== revision) return;
+            invalidateWorktreeStatus(this.top, on, observedAt);
+            if (window()?.active !== false && this.loading !== key) this.refresh(cx);
+            else this.treeDirty = true;
+          });
         }
       } catch {
         // No watcher here: the timer still refreshes.

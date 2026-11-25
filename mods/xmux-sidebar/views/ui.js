@@ -98,19 +98,21 @@ export function GroupHeader({
     .when(Boolean(action), (el) => el.child(action));
 }
 
-// One step of a tree's line, in front of a nested row: "│" carries on past it,
-// "├" branches to it, "└" ends at it, "" leaves the column blank. `mid` is how far
-// down the row its title sits, where the branch turns.
-export function Rail(kind, mid = 15) {
+const RAIL_WIDTH = 24;
+const RAIL_LINE_X = 17.5;
+export const RAIL_LINE_FROM_ROW = RAIL_LINE_X - RAIL_WIDTH;
+
+// The line on a nested row turns toward its title.
+export function Rail(kind, mid = 15, { width = RAIL_WIDTH, left = RAIL_LINE_X } = {}) {
   const t = theme();
-  const line = () => div().absolute().left(17.5).top(0).border_color(t.input);
   return div()
     .relative()
-    .w(24)
+    .w(width)
     .flex_none()
     .self_stretch()
     .when(kind === "├" || kind === "└", (el) =>
-      el.child(line().h(mid).w(7).border_l(1).border_b(1).rounded_bl(6)),
+      el.child(div().absolute().left(left).top(0).h(mid).w(7)
+        .border_l(1).border_b(1).border_color(t.input).rounded_bl(6)),
     );
 }
 

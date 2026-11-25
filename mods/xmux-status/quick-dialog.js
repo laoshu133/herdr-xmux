@@ -1,4 +1,4 @@
-import { appHome, checking, closeOverlay, exec, focused, hc, home, notify, openOverlay, panes, run, setShared, shared, terminals } from "herdr";
+import { appHome, checking, closeOverlay, focused, hc, home, notify, openOverlay, run, setShared, shared, terminals } from "herdr";
 
 const STATE = "xmux.quick-dialog";
 const LABEL = "xmux.quick-dialog";
@@ -13,22 +13,20 @@ export class QuickDialog {
     this.busy = false;
     this.owner = appHome();
     if (!checking()) {
-      // Overlay ids cannot be trusted across app starts or layout changes.
-      // A fixed window key also replaces any survivor of a status-mod reload.
-      setShared(STATE, { ...shared(STATE), overlay: null });
+      const state = shared(STATE);
+      if (state?.overlay) closeOverlay(state.overlay);
+      setShared(STATE, { ...state, overlay: null });
     }
   }
 
   async toggle() {
     if (checking() || this.busy) return;
     this.busy = true;
-    let terminalToFocus;
     try {
       const state = shared(STATE);
       if (state?.overlay) {
         closeOverlay(state.overlay);
         setShared(STATE, { ...state, overlay: null });
-        this.restore(state);
         return;
       }
 
@@ -57,47 +55,24 @@ export class QuickDialog {
       }
 
       const overlay = openOverlay({
-        kind: "window",
-        key: "xmux-quick-dialog",
+        kind: "dialog",
+        modal: true,
         width: 0.72,
         height: 0.64,
         layout: {
           type: "column",
           children: [
-            { type: "block", size: { px: 32 }, content: { mod: "xmux-quick-dialog", props: { terminal, origin } } },
+            { type: "block", size: { px: 32 }, content: { mod: "xmux-quick-dialog", props: { terminal } } },
             { type: "block", content: { terminal } },
           ],
         },
       });
-      setShared(STATE, { terminal, overlay, origin });
-      terminalToFocus = terminal;
+      setShared(STATE, { terminal, overlay });
     } catch (error) {
       notify({ title: "Local terminal", body: String(error.message ?? error), level: "error" });
     } finally {
       this.busy = false;
     }
-
-    if (terminalToFocus) {
-      // run() queues a UI command: its eventual errors cannot be caught here.
-      // The control CLI returns unsupported overlay targets without a toast.
-      // Try on every show so upstream support works without a version check.
-      // Keep this outside the busy section so hiding never waits for focus.
-      try {
-        await exec("env", [`HERDR_APP_HOME=${this.owner}`, "herdr-app", "do", "pane.focus", JSON.stringify({ terminal: terminalToFocus })], { on: null, timeout: 2000 });
-      } catch {
-        // Optional: older clients, a missing CLI or a timeout leave the window
-        // usable by clicking its terminal. Nonzero CLI results do the same.
-      }
-    }
-  }
-
-  restore(state) {
-    const origin = state?.origin;
-    const current = focused();
-    // Hiding a background window must not undo navigation since it opened.
-    if (current?.terminal !== state?.terminal || (origin?.tab && current?.tab !== origin.tab)) return;
-    if (origin?.pane && panes().some(p => p.pane === origin.pane)) run("pane.focus", { pane: origin.pane });
-    else if (origin?.terminal && terminals().some(t => t.address === origin.terminal && t.state === "live")) run("pane.focus", { terminal: origin.terminal });
   }
 
   closeCurrent() {
@@ -111,6 +86,5 @@ export class QuickDialog {
     run("terminal.kill", { terminal: state.terminal });
     if (state.overlay) closeOverlay(state.overlay);
     setShared(STATE, null);
-    this.restore(state);
   }
 }

@@ -167,6 +167,7 @@
                   "radius": 0,
                   "gap": 1,
                   "lone": true,
+                  "veil": 0.2,
                   "focus": {
                     "width": 1,
                     "color": "border"

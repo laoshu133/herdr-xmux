@@ -5,7 +5,7 @@ import { MAX_IMAGE, mb, probeImage } from "./preview/images.js";
 import { sshTarget } from "./preview/machines.js";
 
 const PATH_TIMEOUT = 5000;
-const DIAGNOSTIC_SUFFIX = /:\d+(?::\d+)?\.?$/;
+const LEGACY_DIAGNOSTIC_SUFFIX = /:\d+(?::\d+)?\.?$/;
 const FILE_URI = /^file:(?:\/\/([^/]*))?(\/[^?#]*)(?:[?#].*)?$/i;
 
 // Resolve relative paths and home directories on the machine that printed the link.
@@ -60,7 +60,12 @@ async function previewProblem(file) {
 export async function handleLink({ link, source }) {
   if (link?.kind !== "file" || typeof link.raw !== "string") return "pass";
   const on = source?.machine ?? null;
-  if (DIAGNOSTIC_SUFFIX.test(link.raw) && !/^file:/i.test(link.raw)) {
+  // 0.1.18 supplies coordinates for ranges and anchors too, including remote files.
+  // The older handler needs the suffix fallback when there is no verified local filename.
+  const positioned = Number.isInteger(link.line) && link.line > 0;
+  const legacy = !/^file:/i.test(link.raw) && LEGACY_DIAGNOSTIC_SUFFIX.test(link.raw) &&
+    (!link.path || !link.raw.endsWith(link.path.split("/").pop()));
+  if (positioned || legacy) {
     return on ? passFile(link, on, "Use an editor handler to open links with a line number") : "pass";
   }
 

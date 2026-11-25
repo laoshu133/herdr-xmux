@@ -1,6 +1,11 @@
 {
   "version": "1.2.0",
   "place": "none",
+  "palette": [
+    { "title": "Toggle quick terminal", "command": "xmux-status.quick-dialog", "words": "shell dialog" },
+    { "title": "Focus an agent that needs attention", "command": "xmux-status.focus-attention", "words": "agent blocked done" },
+    { "title": "Reopen closed tab", "command": "xmux-status.reopen-closed", "words": "restore terminal tab" }
+  ],
   "cloned_from": {
     "name": "estro-status",
     "version": "0.1.15"

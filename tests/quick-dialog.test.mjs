@@ -16,7 +16,6 @@ function fixture() {
   const live = [];
   let focus = { terminal: "t1", pane: "p1", cwd: "/work" };
   let reply;
-  let focusReply = () => ({ code: 0, stdout: "{}", stderr: "" });
   const api = {
     appHome: () => owner,
     checking: () => false,
@@ -30,7 +29,6 @@ function fixture() {
     openOverlay: spec => { calls.push(["show", spec]); return "overlay"; },
     run: (name, args) => calls.push([name, args]),
     notify: value => calls.push(["error", value]),
-    exec: async (...args) => { calls.push(["exec", ...args]); return focusReply(...args); },
     hc: async args => {
       calls.push(["hc", args]);
       if (reply) return reply(args);
@@ -42,10 +40,10 @@ function fixture() {
   };
   const controller = new (load(api))();
   controller.init();
-  return { controller, calls, live, state: () => values.get(STATE), setState: value => values.set(STATE, value), focus: value => { focus = value; }, reply: value => { reply = value; }, focusReply: value => { focusReply = value; } };
+  return { controller, calls, live, state: () => values.get(STATE), setState: value => values.set(STATE, value), focus: value => { focus = value; }, reply: value => { reply = value; } };
 }
 
-test("hide and reopen reuse the shell and restore the source pane", async () => {
+test("hide and reopen reuse the shell and let Herdr restore focus", async () => {
   const f = fixture();
   await f.controller.toggle();
   const launch = f.calls.find(c => c[0] === "hc")[1];
@@ -58,70 +56,26 @@ test("hide and reopen reuse the shell and restore the source pane", async () => 
   await f.controller.toggle();
   assert.equal(f.state().overlay, null);
   assert.equal(f.live[0].state, "live");
-  assert.deepEqual(f.calls.at(-1), ["pane.focus", { pane: "p1" }]);
+  assert.deepEqual(f.calls.at(-1), ["hide", "overlay"]);
   await f.controller.toggle();
   assert.equal(f.state().terminal, "t2");
   assert.equal(f.calls.filter(c => c[0] === "hc" && c[1][0] === "run").length, 1);
   assert.equal(f.calls.filter(c => c[0] === "terminal.kill").length, 0);
 });
 
-test("opening and reopening quietly request focus after mounting the window", async () => {
+test("opening and reopening attach the same terminal to a native modal dialog", async () => {
   const f = fixture();
-  const request = ["exec", "env", [`HERDR_APP_HOME=${owner}`, "herdr-app", "do", "pane.focus", '{"terminal":"t2"}'], { on: null, timeout: 2000 }];
-  await f.controller.toggle();
-  assert.equal(f.calls.at(-2)[0], "show");
-  assert.equal(f.calls.at(-2)[1].kind, "window");
-  assert.deepEqual(f.calls.at(-1), request);
-  f.focus({ terminal: "t2", pane: null });
   await f.controller.toggle();
   await f.controller.toggle();
-  assert.equal(f.calls.at(-2)[0], "show");
-  assert.deepEqual(f.calls.at(-1), request);
-});
-
-for (const error of ["no such pane", "unknown command: pane.focus"]) {
-  test(`unsupported focus (${error}) keeps the window and retries on reopening`, async () => {
-    const f = fixture();
-    f.focusReply(() => ({ code: 1, stdout: JSON.stringify({ error }), stderr: "" }));
-    await f.controller.toggle();
-    assert.equal(f.state().overlay, "overlay");
-    assert.ok(!f.calls.some(c => c[0] === "error" || c[0] === "pane.focus"));
-    await f.controller.toggle();
-    f.focusReply(() => ({ code: 0, stdout: "{}", stderr: "" }));
-    await f.controller.toggle();
-    assert.equal(f.calls.filter(c => c[0] === "exec").length, 2);
-    assert.equal(f.calls.filter(c => c[0] === "hc" && c[1][0] === "run").length, 1);
-  });
-}
-
-for (const error of ["cannot run env: not found", "command timed out"]) {
-  test(`focus transport failure (${error}) does not become a launch error`, async () => {
-    const f = fixture();
-    f.focusReply(() => { throw new Error(error); });
-    await f.controller.toggle();
-    assert.equal(f.state().overlay, "overlay");
-    assert.ok(!f.calls.some(c => c[0] === "error"));
-    await f.controller.toggle();
-    assert.equal(f.state().overlay, null);
-    assert.equal(f.live[0].state, "live");
-  });
-}
-
-test("hiding stays responsive while optional focus is pending", async () => {
-  const f = fixture();
-  let release;
-  f.focusReply(() => new Promise(resolve => { release = resolve; }));
-  const opening = f.controller.toggle();
-  // Let terminal creation finish and the optional focus request begin.
-  await Promise.resolve();
-  assert.equal(typeof release, "function");
   await f.controller.toggle();
-  assert.equal(f.state().overlay, null);
-  const afterHide = f.calls.length;
-  release({ code: 0, stdout: "{}", stderr: "" });
-  await opening;
-  assert.equal(f.calls.length, afterHide);
-  assert.equal(f.state().overlay, null);
+  const dialogs = f.calls.filter(([name]) => name === "show").map(([, spec]) => spec);
+  assert.equal(dialogs.length, 2);
+  for (const dialog of dialogs) {
+    assert.equal(dialog.kind, "dialog");
+    assert.equal(dialog.modal, true);
+    assert.equal(dialog.layout.children[1].content.terminal, "t2");
+  }
+  assert.ok(!f.calls.some(([name]) => name === "pane.focus"));
 });
 
 test("a remote workspace starts a local shell in local home", async () => {
@@ -155,7 +109,7 @@ test("reconnection failures do not create a replacement shell", async () => {
   assert.equal(f.calls.at(-1)[0], "error");
 });
 
-test("closing a focused floating shell leaves the underlying tab alone", async () => {
+test("closing a focused quick shell leaves the underlying tab alone", async () => {
   const f = fixture();
   await f.controller.toggle();
   f.focus({ terminal: "t2", pane: null });

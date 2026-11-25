@@ -116,6 +116,10 @@ export class Spaces {
     for (const s of sp) if (!this.shown.has(s.id)) this.born[s.id] ??= now;
     const ps = panes();
     this.publishParents(sp, ps);
+    const active = window()?.active !== false;
+    const refocused = active && this.windowActive === false;
+    this.windowActive = active;
+    if (!active) return;
     const places = sp.map((s) => {
       const tabs = new Set((s.tabs ?? []).map((tab) => tab.id));
       const folder = spaceFolder(s, ps);
@@ -129,6 +133,8 @@ export class Spaces {
     });
     if (this.settings.pull_request_status) this.prObserver.refresh(places, cx);
     const due = this.due(now, sp, ps);
+    const selected = sp.find((space) => space.active);
+    if (refocused && selected && spaceFolder(selected, ps)) due.add(checkoutKey(selected, ps));
     if (due.size) this.refreshGit(due, cx);
     if (sp.some((s) => !this.shown.has(s.id))) cx.notify();
   }
@@ -200,7 +206,7 @@ export class Spaces {
   }
 
   addFallbacks(due, now, used) {
-    if (!window().active) return;
+    if (window()?.active === false) return;
     const every = duration(this.settings.git.retry_after, GIT_FALLBACK_MS);
     for (const key of used) {
       const watched = this.git[key] || this.unsure.has(key);

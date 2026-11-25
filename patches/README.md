@@ -1,11 +1,7 @@
 # Herdr overlay terminal focus
 
-`xmux-quick-dialog` quietly tries `pane.focus {terminal}` through the control
-CLI after opening its window. Herdr 0.1.16 only searches the main layout and
-tab panes; it falls back to clicking the terminal without an error toast.
-The optional `herdr-app-0.1.16-overlay-focus.patch` enables automatic keyboard
-focus. The mod retries on each opening and automatically uses future upstream
-support without requiring this patch.
+XMux now uses Herdr's native dialog for quick-terminal focus. This patch is
+for the earlier draggable-window implementation on Herdr 0.1.16.
 
 The patch applies to herdrdev/herdr-app commit
 `034f8b85f7e6bb71f8ff55cb4a80c548b2578c0f` (tag `v0.1.16`). It extends the existing
@@ -28,6 +24,5 @@ bundle. Test with a scratch `HERDR_APP_HOME`, `HC_SESSION` and
 backing up the installed app, replace its executable atomically and sign
 the bundle locally. Quit and reopen Herdr to use the new executable.
 
-An upstream update can replace this local patch. The mod still opens a usable
-window if overlay focus is unsupported after updating. Check upstream support
-before reapplying the patch; it is only for the source commit above.
+An upstream update can replace this local patch. Apply it only to the source
+commit above.

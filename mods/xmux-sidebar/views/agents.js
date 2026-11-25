@@ -16,7 +16,7 @@ import {
   setShared,
   setAgentOrder,
 } from "herdr";
-import { TEXT, Icon, IconButton, GroupHeader, Menu, MenuLabel, MenuOption } from "./ui.js";
+import { TEXT, Icon, IconButton, GroupHeader, Menu, MenuLabel, MenuOption, Rail, RAIL_LINE_FROM_ROW } from "./ui.js";
 import { scrollingScrollbar } from "./scrollbar.js";
 import { automaticTabTitle, tabLead } from "../shared/tab-title.js";
 
@@ -40,6 +40,10 @@ function title(tab, l) {
   return tab.name === prog && telling ? live : tab.name;
 }
 const RANK = { blocked: 4, done: 3, working: 2, idle: 1 };
+const AGENT_ROW = { padding: 8, icon: 16 };
+const CHILD_ROW = { height: 26, icon: 14, firstIndent: 26, indent: 16 };
+const AGENT_ICON_CENTER = AGENT_ROW.padding + (AGENT_ROW.icon - 1) / 2;
+const CHILD_ICON_CENTER = (CHILD_ROW.icon - 1) / 2;
 // A sub-agent without a pane isn't in agents(): its raw word, error counting as
 // blocked. It's never done: it reports to its parent, and the parent's done is the news.
 const kidStatus = (k, listed) => {
@@ -297,46 +301,43 @@ export class Agents {
     });
   }
 
-  subRow(t, s, shown, compact) {
+  subRow(t, s, view) {
     const k = s.t;
     const st = kidStatus(k, this.listed);
-    const pic = icon(k.program, 14, t.foreground);
-    const on = k.address === shown;
+    const pic = icon(k.program, CHILD_ROW.icon, t.foreground);
+    const on = k.address === view.shown;
     return h_flex()
       .id(`sub-${k.address}`)
-      .pl(39)
-      .pr(8)
-      .rounded(8)
-      .h(26)
+      .h(CHILD_ROW.height)
       .flex_none()
       .gap(0)
       .items_center()
       .cursor_pointer()
-      .text_size(12.5)
-      .when(on, (el) => el.bg(t.raised))
-      .hover((s) => s.bg(t.hover))
       .on_click(() => this.peek(k.address))
       .children(
-        s.lines.map((l) =>
-          div()
-            .self_start()
-            .mt(-4)
-            .w(9)
-            .h(17)
-            .mr(4)
-            .flex_none()
-            .when(l === "└" || l === "├", (el) => el.border_b(1).rounded_bl(6)),
-        ),
+        s.lines.map((line, depth) => Rail(line, CHILD_ROW.height / 2, depth === 0
+          ? { width: CHILD_ROW.firstIndent, left: AGENT_ICON_CENTER }
+          : { width: CHILD_ROW.indent, left: CHILD_ICON_CENTER })),
       )
-      .when(Boolean(pic), (el) => el.child(div().mr(8).child(pic)))
       .child(
-        div()
+        h_flex()
+          .id(`sub-content-${k.address}`)
           .flex_1()
-          .truncate()
-          .text_color(on ? t.foreground : t.muted)
-          .child(k.name || k.template || k.program?.name || k.address),
-      )
-      .child(this.status(t, { status: st }, compact));
+          .min_w(0)
+          .h_full()
+          .pl(4)
+          .pr(8)
+          .rounded(8)
+          .items_center()
+          .text_size(12.5)
+          .when(on, (el) => el.bg(t.raised))
+          .hover((s) => s.bg(t.hover))
+          .when(Boolean(pic), (el) => el.child(div().mr(8).child(pic)))
+          .child(div().flex_1().min_w(0).truncate()
+            .text_color(on ? t.foreground : t.muted)
+            .child(k.name || k.template || k.program?.name || k.address))
+          .child(this.status(t, { status: st }, view.byPriority)),
+      );
   }
 
   // compact: a ! for blocked where a header already says "Needs you".
@@ -573,7 +574,7 @@ export class Agents {
     const subs = this.tree(view.all, a.address);
     const row = this.agentRow(a, alias, subs, view, t);
     if (this.folded.has(a.address)) return [row];
-    return [row, ...subs.map((s) => this.subRow(t, s, view.shown, view.byPriority))];
+    return [row, ...subs.map((s) => this.subRow(t, s, view))];
   }
 
   railRow(a, alias, t) {
@@ -603,7 +604,7 @@ export class Agents {
   }
 
   agentRow(a, alias, subs, view, t) {
-    const pic = icon(a.program, 16, t.foreground);
+    const pic = icon(a.program, AGENT_ROW.icon, t.foreground);
     const hovered = this.hovered === a.address;
     const when = this.since(a);
     const aliasLabel = view.nested ? alias.slice(machinePrefix(alias).length) : alias;
@@ -617,13 +618,13 @@ export class Agents {
     const dragEnabled = Boolean(tab && space);
     const row = h_flex()
       .id(`ag-${a.address}`)
-      .px(8)
+      .px(AGENT_ROW.padding)
       .h(30)
       .flex_none()
       .rounded(8)
       .items_center()
       .gap(9)
-      .when(dragEnabled, (el) => el.relative())
+      .relative()
       .when(a.focused, (el) => el.bg(t.selected))
       .when(this.tabDrag?.active && this.tabDrag.id === tab?.id, (el) => el.opacity(0.45))
       .when(this.tabDrag?.active && dragEnabled, (el) => el.cursor_grab())
@@ -645,7 +646,7 @@ export class Agents {
           .on_mouse_move((event, cx) => this.hoverTab(space, tab, event, cx))
           .on_mouse_up("left", (event, cx) => this.finishTabDrag(space, tab, event, cx)),
       )
-      .when(Boolean(pic), (el) => el.child(this.agentIcon(a, pic, subs)))
+      .when(Boolean(pic), (el) => el.child(pic))
       .child(this.agentName(a, view, t))
       .when(Boolean(alias), (el) =>
         el.child(
@@ -657,7 +658,7 @@ export class Agents {
             .child(aliasLabel),
         ),
       )
-      .when(subs.length > 0, (el) => el.child(this.foldButton(a, subs, t)))
+      .when(subs.length > 0, (el) => el.child(this.foldButton(a, subs, t, view.nested ? RAIL_LINE_FROM_ROW : 0)))
       .when(hovered, (el) => el.child(this.pinButton(a, t)))
       .when(!hovered && Boolean(when), (el) =>
         el.child(
@@ -862,19 +863,6 @@ export class Agents {
     return div().flex_1().min_w(0).truncate().text_size(TEXT.caption).text_color(t.dim).child(prog);
   }
 
-  // With sub-agents, clicking the icon folds them.
-  agentIcon(a, pic, subs) {
-    return div()
-      .id(`agent-fold-${a.address}`)
-      .when(subs.length > 0, (el) =>
-        el.on_click((_e, cx) => {
-          cx.stop_propagation();
-          this.toggleFold(a.address, cx);
-        }),
-      )
-      .child(pic);
-  }
-
   // The tab's title, then quietly its space; nested under its space's row, its program.
   agentName(a, view, t) {
     const namesSpace = !view.nested;
@@ -908,29 +896,37 @@ export class Agents {
       .when(view.nested && Boolean(prog) && prog !== name, (el) => el.child(this.programName(prog, t)));
   }
 
-  // The fold chevron; folded, the count too, colored by the most urgent one.
-  foldButton(a, subs, t) {
+  // Center the chevron on the connecting line, using the space rail when nested.
+  foldButton(a, subs, t, lineX) {
     const statuses = subs.map((s) => kidStatus(s.t, this.listed));
     const top = statuses.reduce((m, s) => ((RANK[s] ?? 0) > (RANK[m] ?? 0) ? s : m), null);
     const open = !this.folded.has(a.address);
+    const inGutter = lineX < 0;
     return div()
       .id(`fold-${a.address}`)
+      .absolute()
+      .left(lineX - 8)
+      .when(inGutter, (el) => el.left(-17).pl(5))
+      .top(6)
+      .w(17)
       .h(18)
-      .px(3)
-      .gap(3)
       .flex()
       .items_center()
+      .justify_center()
       .rounded(4)
-      .text_size(TEXT.caption)
+      .bg(inGutter || !a.focused ? t.chrome : t.selected)
+      .when(!inGutter && this.hovered === a.address, (el) => el.bg(t.hover))
       .text_color(open ? t.dim : (t[top] ?? t.dim))
       .cursor_pointer()
+      .tooltip(open ? "Collapse children" : `Expand ${subs.length} children`)
+      .accessibility_label(open ? "Collapse children" : "Expand children")
       .hover((s) => s.bg(t.hover).text_color(t.foreground))
+      .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
       .on_click((_e, cx) => {
         cx.stop_propagation();
         this.toggleFold(a.address, cx);
       })
-      .child(Icon(`chevron-${open ? "down" : "right"}`, 11))
-      .when(!open, (el) => el.child(String(subs.length)));
+      .child(Icon(`chevron-${open ? "down" : "right"}`, 11));
   }
 
   pinButton(a, t) {

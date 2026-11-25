@@ -1,24 +1,16 @@
 import { View, div, svg } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { closeOverlay, focused, panes, props, run, setShared, shared, terminals, theme } from "herdr";
+import { closeOverlay, props, run, setShared, shared, terminals, theme } from "herdr";
 import { floatingTerminalTitle } from "./shared/tab-title.js";
 
 const STATE = "xmux.quick-dialog";
 
 export default class QuickDialogTitlebar extends View {
-  restore() {
-    const { terminal, origin } = props() ?? {};
-    if (focused()?.terminal && focused().terminal !== terminal) return;
-    if (origin?.pane && panes().some(p => p.pane === origin.pane)) run("pane.focus", { pane: origin.pane });
-    else if (origin?.terminal && terminals().some(t => t.address === origin.terminal && t.state === "live")) run("pane.focus", { terminal: origin.terminal });
-  }
-
   dismiss(kill) {
     const { terminal, overlay } = props();
     if (kill) run("terminal.kill", { terminal });
     if (shared(STATE)?.overlay === overlay) setShared(STATE, kill ? null : { ...shared(STATE), overlay: null });
     closeOverlay(overlay);
-    this.restore();
   }
 
   close() {

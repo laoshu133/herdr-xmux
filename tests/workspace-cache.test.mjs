@@ -39,12 +39,14 @@ test("PRs and the sidebar use the same CLI and host overrides", async () => {
   assert.deepEqual(invalid.settings.hosts, []);
 });
 
-test("Git footer reads all status markers in a single Git command", async () => {
+test("Git footer reads all status markers from a single worktree scan", async () => {
   const calls = [];
   const exec = async (...args) => {
     calls.push(args);
+    if (args[1][0] === "rev-parse") return { code: 0, stdout: "/project\n" };
     return { code: 0, stdout: ["# branch.oid abcdef0", "# branch.head topic", "# branch.ab +2 -1",
-      "1 MM staged-and-unstaged", "u UU conflict", "? untracked\nfile", ""].join("\0") };
+      "1 MM N... 100644 100644 100644 abc def staged-and-unstaged",
+      "u UU N... 100644 100644 100644 100644 abc def abc conflict", "? untracked\nfile", ""].join("\0") };
   };
   const { readGitStatus } = await moduleAt("../lib/xmux/git-status.js", ["readGitStatus"], { exec });
   const { GitFooter } = await moduleAt("../mods/xmux-status/git-footer.js", ["GitFooter"], {
@@ -62,12 +64,52 @@ test("Git footer reads all status markers in a single Git command", async () => 
     branch: "topic", oid: "abcdef0", ahead: 2, behind: 1,
     conflicted: true, modified: true, untracked: true,
   });
-  assert.equal(calls.length, 1);
-  const [[command, args, options]] = calls;
+  assert.equal(calls.length, 2);
+  const [command, args, options] = calls[1];
   assert.equal(command, "git");
   assert.ok(args.includes("status"));
   assert.equal(options.cwd, "/project");
   assert.equal(options.on, "remote");
+});
+
+test("Files, Changes and the status footer share Git scans within one machine and worktree", async () => {
+  const calls = [];
+  const pending = deferred();
+  const root = "/shared-worktree";
+  const status = [
+    "# branch.oid (initial)", "# branch.head main",
+    "1 .M N... 100644 100644 100644 abc def tracked file",
+    "u AA N... 000000 100644 100644 100644 abc def abc conflict file",
+    "? name\nwith a newline", "",
+  ].join("\0");
+  const exec = (_command, args, { cwd, on }) => {
+    if (args[0] === "rev-parse") return { code: 0, stdout: root + "\n" };
+    calls.push([cwd, on]);
+    return pending.promise;
+  };
+  const [files, changes, footer] = await Promise.all(["xmux-files", "xmux-changes", "xmux-status"].map((mod) =>
+    moduleAt(`../mods/${mod}/shared/git-status.js`, ["readWorktreeStatus", "invalidateWorktreeStatus", "readGitStatus"], { exec }),
+  ));
+  const fromFiles = files.readWorktreeStatus(root, null);
+  const fromChanges = changes.readWorktreeStatus(root, null);
+  const fromFooter = footer.readGitStatus(root + "/subdir", null);
+  const remote = changes.readWorktreeStatus(root, "m4");
+  const another = files.readWorktreeStatus(root + "-other", null);
+  assert.equal(fromFiles, fromChanges);
+  assert.notEqual(fromChanges, remote);
+  assert.notEqual(fromFiles, another);
+  pending.resolve({ code: 0, stdout: status });
+  const [scan] = await Promise.all([fromFiles, fromChanges, remote, another]);
+  assert.equal(await fromFooter, scan.status);
+  assert.deepEqual(calls, [[root, null], [root, "m4"], [root + "-other", null]]);
+  assert.deepEqual([...scan.files], [["tracked file", " M"], ["conflict file", "AA"], ["name\nwith a newline", "??"]]);
+  assert.equal(scan.porcelain, [" M tracked file", "AA conflict file", "?? name\nwith a newline"].join("\0"));
+
+  changes.invalidateWorktreeStatus(root, null);
+  assert.notEqual(files.readWorktreeStatus(root, null), fromFiles);
+  assert.equal(changes.readWorktreeStatus(root, "m4"), remote);
+  await files.readWorktreeStatus(root, null);
+  assert.equal(calls.length, 4);
 });
 
 test("Git footer ignores results for a checkout the user has left", async () => {
@@ -819,6 +861,10 @@ test("terminal links pass editor positions and provide feedback for unavailable 
   const source = { space: "s1", machine: null, cwd: "/repo" };
   assert.equal(await handleLink({ link: { kind: "url", raw: "vscode://file/repo/a.ts:42" }, source }), "pass");
   assert.equal(await handleLink({ link: { kind: "file", raw: "./a.ts:42:7", path: "/repo/a.ts" }, source }), "pass");
+  assert.equal(await handleLink({
+    link: { kind: "file", raw: "./a.ts#L42-L45", path: "/repo/a.ts", line: 42 },
+    source,
+  }), "pass");
   assert.equal(await handleLink({ link: { kind: "file", raw: "./gone.md", path: "/repo/gone.md" }, source }), "pass");
   assert.deepEqual(notices, []);
   assert.equal(await handleLink({

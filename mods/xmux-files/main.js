@@ -13,7 +13,8 @@
 // files/model.js says what the data means; views/ui.js holds every look.
 import { View } from "gpui-kit";
 import { Select } from "./views/ui.js";
-import { appHome, exec, hc, nextCommand, props, setShared, shared, spaces, readTextFile, writeTextFile } from "herdr";
+import { appHome, exec, hc, nextCommand, props, setShared, shared, spaces, readTextFile, writeTextFile, window } from "herdr";
+import { invalidateWorktreeStatus } from "./shared/git-status.js";
 import { loadSettings, duration } from "./shared/settings.js";
 import { followFileIcons } from "./shared/file-icons.js";
 import { readMethods } from "./files/reads.js";
@@ -95,7 +96,7 @@ class XmuxFiles extends View {
         this.readFile(cx);
       }
       cx.timer.every(Math.max(500, duration(settings.refresh.file, 2000)), (cx) => {
-        if (!this.viewerVisible()) return;
+        if (!this.viewerVisible() || window()?.active === false) return;
         this.readFile(cx);
         this.readHunks(cx);
       });
@@ -121,16 +122,28 @@ class XmuxFiles extends View {
       const { settings, problems } = await loadSettings("xmux-files", DEFAULT_SETTINGS);
       for (const problem of problems) console.warn(`xmux-files mod.json settings: ${problem}`);
       this.findEditors(cx, Array.isArray(settings.editors) ? settings.editors : []);
-      cx.timer.every(Math.max(1000, duration(settings.refresh.tree, 10000)), (cx) => this.refresh(cx));
+      cx.timer.every(Math.max(1000, duration(settings.refresh.tree, 10000)), (cx) => {
+        if (window()?.active !== false) this.refresh(cx);
+      });
     });
     cx.spawn(async (cx) => {
-      for (;;) if ((await nextCommand()) === "refresh") this.refresh(cx);
+      for (;;) if ((await nextCommand()) === "refresh") {
+        invalidateWorktreeStatus(this.top, this.on);
+        this.refresh(cx);
+      }
     });
   }
 
   // Keeps up with the focused pane and tabs closing.
   follow(cx) {
-    if (this.placeKey() !== this.key) this.refresh(cx);
+    const active = window()?.active !== false;
+    const refocused = active && this.windowActive === false;
+    this.windowActive = active;
+    const next = active ? this.placeKey() : this.key;
+    if (active && (refocused || this.treeDirty || next !== this.key) && this.loading !== next) {
+      this.treeDirty = false;
+      this.refresh(cx);
+    }
     this.pruneViewers();
   }
 

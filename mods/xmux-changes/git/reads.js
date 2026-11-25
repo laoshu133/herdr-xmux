@@ -7,19 +7,18 @@ const LOG_FORMAT = "--format=%H%x00%h%x00%an%x00%ae%x00%at%x00%s%x00%b%x1e";
 
 const lines = (text) => text.split("\n").filter(Boolean);
 
-export async function readStatus(git) {
-  const [status, staged, unstaged, head] = await Promise.all([
-    git(["status", "--porcelain=v1", "-z", "--no-renames", "--untracked-files=all"]),
-    git(["diff", "--cached", "--numstat", "-z", ...NO_HELPERS]),
-    git(["diff", "--numstat", "-z", ...NO_HELPERS]),
-    git(["rev-parse", "--verify", "HEAD"]),
+export async function readStatus(git, scan) {
+  const states = [...scan.files.values()].filter((xy) => xy !== "??");
+  const empty = { code: 0, stdout: "" };
+  const [staged, unstaged] = await Promise.all([
+    states.some((xy) => xy[0] !== " ") ? git(["diff", "--cached", "--numstat", "-z", ...NO_HELPERS]) : empty,
+    states.some((xy) => xy[1] !== " ") ? git(["diff", "--numstat", "-z", ...NO_HELPERS]) : empty,
   ]);
-  if (status.code !== 0) throw Error(status.stderr || "Cannot read changes");
   if (staged.code !== 0) throw Error(staged.stderr || "Cannot read change statistics");
   if (unstaged.code !== 0) throw Error(unstaged.stderr || "Cannot read change statistics");
   return {
-    files: changedFiles(status.stdout, [staged.stdout, unstaged.stdout]),
-    hasHead: head.code === 0,
+    files: changedFiles(scan.porcelain, [staged.stdout, unstaged.stdout]),
+    hasHead: Boolean(scan.status.oid && scan.status.oid !== "(initial)"),
   };
 }
 

@@ -22,6 +22,7 @@ import { newCode, CodeEditor, CodeRows } from "../shared/code-viewer.js";
 import { fileMenuTarget, showFileMenu } from "../shared/file-menu.js";
 import { viewerEntries } from "../actions/open.js";
 import { foundEditors } from "../actions/outside.js";
+import { readWorktreeStatus, resolveGitRoot } from "../shared/git-status.js";
 import { fileIcon, isLight } from "../shared/file-icons.js";
 import { TEXT, FileIcon, Markdown, Message, MenuButton, TextButton, codeFont, codeSize } from "./ui.js";
 
@@ -84,10 +85,14 @@ export const viewerMethods = {
       const git = (args) =>
         exec("git", ["--no-optional-locks", ...args], { cwd: file.root, on: file.on, timeout: 5000 }).catch(() => null);
       let marks = [];
-      const status = await git(["status", "--porcelain=v1", "--", file.path]);
-      if (status?.code === 0 && status.stdout.startsWith("??")) {
+      const root = await resolveGitRoot(file.root, file.on).catch(() => null);
+      const scan = root ? await readWorktreeStatus(root, file.on).catch(() => null) : null;
+      const status = scan && file.path.startsWith(root + "/")
+        ? scan.files.get(file.path.slice(root.length + 1))
+        : undefined;
+      if (status === "??") {
         marks = [{ line: 0, count: Infinity, kind: "added", oldStart: 0, old: [] }];
-      } else if (status?.code === 0 && status.stdout.trim()) {
+      } else if (status) {
         const diff = await git(["diff", "--no-color", "--no-ext-diff", "--no-textconv", "-U0", "HEAD", "--", file.path]);
         if (diff?.code === 0) marks = parseHunks(diff.stdout);
       }
@@ -141,15 +146,20 @@ export const viewerMethods = {
 
   syncCodeState(file, value) {
     // Keep the Editor available for wrap and very large decorated files.
-    const config = JSON.stringify([this.wrap, languageOf(file.path), codeFont(), codeSize()]);
-    if (this.code && this.codeConfig !== config) {
+    const config = JSON.stringify([languageOf(file.path), codeFont(), codeSize()]);
+    const wrapChanged = this.codeWrap !== this.wrap;
+    if (this.code && (this.codeConfig !== config || (wrapChanged && typeof this.code.set_soft_wrap !== "function"))) {
       this.code.release();
       this.code = null;
     }
     if (!this.code) this.code = this.newCode(file, value);
-    else if (this.codeText !== value) this.code.set_value(value);
+    else {
+      if (wrapChanged) this.code.set_soft_wrap(this.wrap);
+      if (this.codeText !== value) this.code.set_value(value);
+    }
     this.codeConfig = config;
     this.codeText = value;
+    this.codeWrap = this.wrap;
   },
 
   // What the pane's header row says, the same row a diff uses: file, folder, and whether

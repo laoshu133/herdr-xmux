@@ -1,8 +1,9 @@
 // The mod's Git state: following the repository, changing the index, history,
 // commit and amend. The reads themselves are in git-reads.js.
-import { exec, watchFolder, shared, setShared } from "herdr";
+import { exec, watchFolder, shared, setShared, window } from "herdr";
 import { activeWorkspace, rememberRoot } from "../shared/context.js";
 import { cachedQuery, invalidateQueries } from "../shared/query-cache.js";
+import { invalidateWorktreeStatus, readWorktreeStatus, resolveGitRoot } from "../shared/git-status.js";
 import {
   readStatus,
   readBranchAndRepo,
@@ -61,8 +62,10 @@ export const gitMethods = {
   },
 
   invalidateRepository() {
-    const on = this.on ?? this.location().on ?? null;
-    const roots = [this.root, this.location().cwd];
+    const { cwd, on = null } = this.location();
+    const root = this.context === this.contextKey() ? this.root : null;
+    invalidateWorktreeStatus(root, on);
+    const roots = [root, cwd];
     invalidateQueries((key) => {
       try { const k = JSON.parse(key); return k[0]?.startsWith("changes-") && k[1] === on && roots.includes(k[2]); }
       catch { return false; }
@@ -71,6 +74,7 @@ export const gitMethods = {
 
   refresh(cx, force = false) {
     if (force) this.invalidateRepository();
+    if (!force && window()?.active === false) { this.dirty = true; return; }
     if (!this.visible()) { this.dirty = true; return; }
     if (this.loading || this.busy) return;
     const { cwd, on } = this.location();
@@ -132,15 +136,9 @@ export const gitMethods = {
   },
 
   async readRepository(cwd, on, context, cx) {
-    const top = await cachedQuery(JSON.stringify(["changes-root", on ?? null, cwd]), 300000,
-      async () => {
-        const result = await this.git(["rev-parse", "--show-toplevel"], cwd, on);
-        if (result.code !== 0) throw new Error("Not a Git repository");
-        return result;
-      }, { share: true });
+    const root = await resolveGitRoot(cwd, on);
     if (!this.isCurrent(context)) return;
-
-    const root = top.stdout.trim();
+    if (!root) throw new Error("Not a Git repository");
     const git = (args) => this.git(args, root, on);
     if (this.mode === "diff" && ["commit", "patch"].includes(this.scope)) {
       this.root = root;
@@ -149,8 +147,9 @@ export const gitMethods = {
       if (this.path && !this.diffLoading && !this.rows.length) this.loadDiff(cx);
       return;
     }
-    const status = await cachedQuery(JSON.stringify(["changes-status", on ?? null, root]), 1000,
-      () => readStatus(git), { share: true });
+    const scan = await readWorktreeStatus(root, on);
+    if (!this.isCurrent(context)) return;
+    const status = await readStatus(git, scan);
     if (!this.isCurrent(context)) return;
     this.storeStatus(root, on, status);
     this.watch(root, cx);
@@ -198,13 +197,14 @@ export const gitMethods = {
         while (this.watched === root) {
           await watchFolder(root);
           if (this.watched !== root) break;
+          const observedAt = Date.now();
           const revision = this.watchRevision = (this.watchRevision ?? 0) + 1;
           cx.timer.after(300, (cx) => {
             if (this.watched !== root || revision !== this.watchRevision) return;
             // Hidden/busy panels remember the event and refresh on return.
             this.dirty = true;
-            invalidateQueries((key) => key === JSON.stringify(["changes-status", null, root]));
-            if (this.visible()) this.refresh(cx);
+            invalidateWorktreeStatus(root, null, observedAt);
+            if (this.visible() && window()?.active !== false) this.refresh(cx);
           });
         }
       } catch {
