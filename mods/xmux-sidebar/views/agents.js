@@ -18,7 +18,8 @@ import {
 } from "herdr";
 import { TEXT, Icon, IconButton, GroupHeader, Menu, MenuLabel, MenuOption, Rail, RAIL_LINE_FROM_ROW } from "./ui.js";
 import { scrollingScrollbar } from "./scrollbar.js";
-import { automaticTabTitle, tabLead } from "../shared/tab-title.js";
+import { automaticTabTitle, floatingTerminalTitle, tabLead } from "../shared/tab-title.js";
+import { openChildPreview } from "../shared/child-preview.js";
 
 import { narrow, toggleSidebar } from "./chrome.js";
 
@@ -44,12 +45,14 @@ const AGENT_ROW = { padding: 8, icon: 16 };
 const CHILD_ROW = { height: 26, icon: 14, firstIndent: 26, indent: 16 };
 const AGENT_ICON_CENTER = AGENT_ROW.padding + (AGENT_ROW.icon - 1) / 2;
 const CHILD_ICON_CENTER = (CHILD_ROW.icon - 1) / 2;
-// A sub-agent without a pane isn't in agents(): its raw word, error counting as
-// blocked. It's never done: it reports to its parent, and the parent's done is the news.
-const kidStatus = (k, listed) => {
-  const s = listed.get(k.address) ?? k.status;
-  return s === "error" ? "blocked" : s === "done" ? "idle" : s;
-};
+// Core keeps the reported word after Herdr marks the turn as seen.
+function kidStatus(terminal) {
+  if (terminal.status === "error") return "blocked";
+  const seen = terminal.labels?.["herdr.seen"];
+  if (terminal.status === "done" && Number.isInteger(terminal.turn) &&
+      seen != null && /^\d+$/.test(seen) && Number(seen) >= terminal.turn) return "idle";
+  return terminal.status;
+}
 const SORTS = [
   { id: "priority", label: "Priority", icon: "clock" },
   { id: "grouped", label: "Grouped by space", icon: "layers" },
@@ -285,10 +288,6 @@ export class Agents {
     });
   }
 
-  peek(addr) {
-    run("terminal.peek", { terminal: addr });
-  }
-
   // Live sub-agents of `addr`, depth first, each with the tree lines in front of it.
   tree(all, addr, lead = []) {
     const kids = all.filter((k) => k.parent === addr && k.state === "live");
@@ -303,7 +302,8 @@ export class Agents {
 
   subRow(t, s, view) {
     const k = s.t;
-    const st = kidStatus(k, this.listed);
+    const st = kidStatus(k);
+    const name = k.title ? floatingTerminalTitle(k) : k.name || k.template || k.program?.name || k.address;
     const pic = icon(k.program, CHILD_ROW.icon, t.foreground);
     const on = k.address === view.shown;
     return h_flex()
@@ -313,7 +313,7 @@ export class Agents {
       .gap(0)
       .items_center()
       .cursor_pointer()
-      .on_click(() => this.peek(k.address))
+      .on_click(() => openChildPreview(k.address))
       .children(
         s.lines.map((line, depth) => Rail(line, CHILD_ROW.height / 2, depth === 0
           ? { width: CHILD_ROW.firstIndent, left: AGENT_ICON_CENTER }
@@ -335,7 +335,7 @@ export class Agents {
           .when(Boolean(pic), (el) => el.child(div().mr(8).child(pic)))
           .child(div().flex_1().min_w(0).truncate()
             .text_color(on ? t.foreground : t.muted)
-            .child(k.name || k.template || k.program?.name || k.address))
+            .child(name))
           .child(this.status(t, { status: st }, view.byPriority)),
       );
   }
@@ -433,7 +433,6 @@ export class Agents {
         if (next !== current) setShared(AGENT_ALIASES, next);
       });
     }
-    this.listed = new Map(unordered.map((a) => [a.address, a.status]));
     this.track(unordered, now);
     this.hold(unordered);
     this.prunePins(all);
@@ -466,7 +465,7 @@ export class Agents {
   // An agent's urgency is its own or its most urgent sub-agent's.
   urgencies(list, all) {
     const kids = (a) =>
-      this.tree(all, a.address).map((s) => RANK[kidStatus(s.t, this.listed)] ?? 0);
+      this.tree(all, a.address).map((s) => RANK[kidStatus(s.t)] ?? 0);
     return new Map(list.map((a) => [a.address, Math.max(this.rank(a), ...kids(a))]));
   }
 
@@ -898,7 +897,7 @@ export class Agents {
 
   // Center the chevron on the connecting line, using the space rail when nested.
   foldButton(a, subs, t, lineX) {
-    const statuses = subs.map((s) => kidStatus(s.t, this.listed));
+    const statuses = subs.map((s) => kidStatus(s.t));
     const top = statuses.reduce((m, s) => ((RANK[s] ?? 0) > (RANK[m] ?? 0) ? s : m), null);
     const open = !this.folded.has(a.address);
     const inGutter = lineX < 0;

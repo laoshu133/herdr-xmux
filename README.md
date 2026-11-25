@@ -89,6 +89,8 @@ Merge these entries into your personal `keys.json`.
 - `Shift+Cmd+T` opens a fresh terminal at the last closed tab's position and
   working directory.
 - `` Cmd+` `` toggles the quick terminal and keeps its shell alive when hidden.
+  If a child terminal preview is open from the sidebar, the shortcut dismisses
+  it first. Clicking outside that preview dismisses it too.
   `Cmd+W` closes the focused quick terminal, dismisses an open child
   terminal preview, or closes the current tab.
 - `Cmd+R` sends a form feed for shell screen clearing.

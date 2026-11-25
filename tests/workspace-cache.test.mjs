@@ -648,6 +648,42 @@ test("Pi tabs and floating terminals follow Core titles even when a session labe
   assert.equal(automaticTabTitle({ name: "My tab", named: true }, pane), "My tab");
 });
 
+test("sidebar children display the Core terminal title and reported state", async () => {
+  const text = [];
+  const row = new Proxy({}, { get: (_target, key) => (value, apply) => {
+    if (key === "child" && typeof value === "string") text.push(value);
+    if (key === "when" && value) apply(row);
+    return row;
+  } });
+  const { floatingTerminalTitle } = await moduleAt(
+    "../lib/xmux/tab-title.js", ["floatingTerminalTitle"], { home: () => "/home/me" },
+  );
+  const { Agents } = await moduleAt("../mods/xmux-sidebar/views/agents.js", ["Agents"], {
+    floatingTerminalTitle, div: () => row, h_flex: () => row,
+  });
+  const sidebar = new Agents();
+  const statuses = [];
+  sidebar.status = (_theme, { status }) => {
+    statuses.push(status);
+    return row;
+  };
+  const terminal = { address: "t2", name: "work-check", title: "π - 检查构建", status: "working" };
+  for (const status of ["working", "done", "idle", "error"]) {
+    terminal.status = status;
+    sidebar.subRow({}, { t: terminal, lines: [] }, {});
+  }
+  terminal.status = "done";
+  terminal.turn = 4;
+  terminal.labels = { "herdr.seen": "3" };
+  sidebar.subRow({}, { t: terminal, lines: [] }, {});
+  terminal.labels["herdr.seen"] = "4";
+  sidebar.subRow({}, { t: terminal, lines: [] }, {});
+  terminal.turn = 5;
+  sidebar.subRow({}, { t: terminal, lines: [] }, {});
+  assert.deepEqual(statuses, ["working", "done", "idle", "blocked", "done", "idle", "done"]);
+  assert.deepEqual(text, Array(7).fill("π - 检查构建"));
+});
+
 test("SSH login, directory changes, and exit update both titles from Core", async () => {
   const shell = { name: "zsh", key: "shell", shell: true };
   const ssh = { name: "ssh", key: "program" };

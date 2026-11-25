@@ -1,4 +1,5 @@
 import { appHome, checking, closeOverlay, focused, hc, home, notify, openOverlay, run, setShared, shared, terminals } from "herdr";
+import { dismissChildPreview } from "./shared/child-preview.js";
 
 const STATE = "xmux.quick-dialog";
 const LABEL = "xmux.quick-dialog";
@@ -23,6 +24,7 @@ export class QuickDialog {
     if (checking() || this.busy) return;
     this.busy = true;
     try {
+      if (dismissChildPreview()) return;
       const state = shared(STATE);
       if (state?.overlay) {
         closeOverlay(state.overlay);

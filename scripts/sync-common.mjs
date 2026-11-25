@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 // modules each mod uses; --check detects stale copies without rewriting them.
 const root = new URL("../", import.meta.url);
 const targets = {
+  "child-preview.js": ["xmux-sidebar", "xmux-status"],
   "provider.js": ["xmux-branch-pr", "xmux-branch-issue", "xmux-sidebar"],
   "hosting-cli.js": ["xmux-branch-pr", "xmux-branch-issue", "xmux-sidebar"],
   "merge-request.js": ["xmux-branch-pr", "xmux-sidebar"],

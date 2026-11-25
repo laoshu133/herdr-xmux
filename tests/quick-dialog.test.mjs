@@ -6,7 +6,8 @@ import test from "node:test";
 // keyboard focus still require the actual app; these mocks never start hc.
 const source = await readFile(new URL("../mods/xmux-status/quick-dialog.js", import.meta.url), "utf8");
 const imports = source.match(/^import \{ (.+) \} from "herdr";/)[1];
-const load = new Function("api", "window", source.replace(/^import .+;\n/, `const { ${imports} } = api;\n`).replace("export class", "class") + "\nreturn QuickDialog;");
+const load = new Function("api", "window", `const { ${imports}, dismissChildPreview } = api;\n` +
+  source.replace(/^import .+;\n/gm, "").replace("export class", "class") + "\nreturn QuickDialog;");
 const STATE = "xmux.quick-dialog";
 const owner = "/config/app";
 
@@ -16,9 +17,16 @@ function fixture() {
   const live = [];
   let focus = { terminal: "t1", pane: "p1", cwd: "/work" };
   let reply;
+  let previewOpen = false;
   const api = {
     appHome: () => owner,
     checking: () => false,
+    dismissChildPreview: () => {
+      if (!previewOpen) return false;
+      calls.push(["hide", "child-preview"]);
+      previewOpen = false;
+      return true;
+    },
     home: () => "/home/local",
     focused: () => focus,
     panes: () => [{ pane: "p1", terminal: "t1" }],
@@ -40,8 +48,18 @@ function fixture() {
   };
   const controller = new (load(api, { dispatch_action: name => calls.push(["key-action", name]) }))();
   controller.init();
-  return { controller, calls, live, state: () => values.get(STATE), setState: value => values.set(STATE, value), focus: value => { focus = value; }, reply: value => { reply = value; } };
+  return { controller, calls, live, state: () => values.get(STATE), setState: value => values.set(STATE, value),
+    focus: value => { focus = value; }, reply: value => { reply = value; }, openPreview: () => { previewOpen = true; } };
 }
+
+test("the quick terminal shortcut dismisses a child preview before opening a shell", async () => {
+  const f = fixture();
+  f.openPreview();
+  await f.controller.toggle();
+  assert.deepEqual(f.calls, [["hide", "child-preview"]]);
+  await f.controller.toggle();
+  assert.equal(f.state().terminal, "t2");
+});
 
 test("hide and reopen reuse the shell and let Herdr restore focus", async () => {
   const f = fixture();
