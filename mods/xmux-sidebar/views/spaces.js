@@ -1,4 +1,4 @@
-// The spaces list: right-aligned branches, nested worktrees and a PR status line.
+// The spaces list: nested worktrees and right-aligned Git and PR status.
 // Repository facts follow each space's first terminal.
 import { div } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
@@ -26,7 +26,6 @@ import { TEXT, Icon, IconButton, Badge, Rail } from "./ui.js";
 import { scrollingScrollbar } from "./scrollbar.js";
 import { newTerminalClick } from "./new-terminal.js";
 
-const USUAL_BRANCHES = new Set(["main", "master"]);
 const rowHeight = ({ tree }) => (tree ? 28 : 30);
 
 // Watches and terminal events handle most changes. Poll visible repositories
@@ -527,22 +526,7 @@ export class Spaces {
       .child("+");
   }
 
-  // ── Branch and PR descriptions ───────────────────────────────────────────
-
-  // The right end of a name row: the branch unless it's the usual one or repeats the
-  // name, and on the selected space how far it is from its remote.
-  // The branch, quietly beside the name. main, master and the space's own name go without saying.
-  branchName(g, name, t) {
-    const branch = g?.branch === "(detached)" ? "detached" : (g?.branch ?? "detached");
-    const shown = g && !USUAL_BRANCHES.has(branch) && branch !== name;
-    return div()
-      .flex_1()
-      .min_w(0)
-      .truncate()
-      .text_size(TEXT.caption)
-      .text_color(t.dim)
-      .when(shown, (el) => el.tooltip(branch).child(branch));
-  }
+  // ── Git and PR status ────────────────────────────────────────────────────
 
   // At the right: the checkout's pull request, and ahead/behind on the selected space.
   gitTail(g, active, t, w) {
@@ -749,7 +733,6 @@ export class Spaces {
       .child(
         div().min_w(0).flex_1().truncate().tooltip(w.name).text_color(t.foreground).child(w.name),
       )
-      .child(this.branchName(g, w.name, t))
       .child(this.gitTail(g, w.active, t, w))
       .when(Boolean(this.checkoutStatus(w)?.error), (el) => el.child(this.prError(w, t)))
       .when(add, (el) =>
