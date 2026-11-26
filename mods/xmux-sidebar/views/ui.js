@@ -99,8 +99,8 @@ export function GroupHeader({
 }
 
 const RAIL_WIDTH = 24;
-const RAIL_LINE_X = 17.5;
-export const RAIL_LINE_FROM_ROW = RAIL_LINE_X - RAIL_WIDTH;
+const RAIL_LINE_X = 15.5;
+export const RAIL_CENTER_FROM_ROW = RAIL_LINE_X + 0.5 - RAIL_WIDTH;
 
 // The line on a nested row turns toward its title.
 export function Rail(kind, mid = 15, { width = RAIL_WIDTH, left = RAIL_LINE_X } = {}) {

@@ -16,7 +16,7 @@ import {
   setShared,
   setAgentOrder,
 } from "herdr";
-import { TEXT, Icon, IconButton, GroupHeader, Menu, MenuLabel, MenuOption, Rail, RAIL_LINE_FROM_ROW } from "./ui.js";
+import { TEXT, Icon, IconButton, GroupHeader, Menu, MenuLabel, MenuOption, Rail, RAIL_CENTER_FROM_ROW } from "./ui.js";
 import { scrollingScrollbar } from "./scrollbar.js";
 import { automaticTabTitle, floatingTerminalTitle, tabLead } from "../shared/tab-title.js";
 import { openChildPreview } from "../shared/child-preview.js";
@@ -657,7 +657,7 @@ export class Agents {
             .child(aliasLabel),
         ),
       )
-      .when(subs.length > 0, (el) => el.child(this.foldButton(a, subs, t, view.nested ? RAIL_LINE_FROM_ROW : 0)))
+      .when(subs.length > 0, (el) => el.child(this.foldButton(a, subs, t, view.nested ? RAIL_CENTER_FROM_ROW : 0.5)))
       .when(hovered, (el) => el.child(this.pinButton(a, t)))
       .when(!hovered && Boolean(when), (el) =>
         el.child(
@@ -896,18 +896,18 @@ export class Agents {
   }
 
   // Center the chevron on the connecting line, using the space rail when nested.
-  foldButton(a, subs, t, lineX) {
+  foldButton(a, subs, t, centerX) {
     const statuses = subs.map((s) => kidStatus(s.t));
     const top = statuses.reduce((m, s) => ((RANK[s] ?? 0) > (RANK[m] ?? 0) ? s : m), null);
     const open = !this.folded.has(a.address);
-    const inGutter = lineX < 0;
+    const inGutter = centerX < 0;
+    const width = 16;
     return div()
       .id(`fold-${a.address}`)
       .absolute()
-      .left(lineX - 8)
-      .when(inGutter, (el) => el.left(-17).pl(5))
+      .left(centerX - width / 2)
       .top(6)
-      .w(17)
+      .w(width)
       .h(18)
       .flex()
       .items_center()
