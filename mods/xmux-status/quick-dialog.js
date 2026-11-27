@@ -1,5 +1,6 @@
 import { appHome, checking, closeOverlay, focused, hc, home, notify, openOverlay, run, setShared, shared, terminals } from "herdr";
 import { dismissChildPreview } from "./shared/child-preview.js";
+import { DIALOG_TITLEBAR_HEIGHT } from "./shared/dialog-titlebar.js";
 
 const STATE = "xmux.quick-dialog";
 const LABEL = "xmux.quick-dialog";
@@ -64,7 +65,7 @@ export class QuickDialog {
         layout: {
           type: "column",
           children: [
-            { type: "block", size: { px: 32 }, content: { mod: "xmux-quick-dialog", props: { terminal } } },
+            { type: "block", size: { px: DIALOG_TITLEBAR_HEIGHT }, content: { mod: "xmux-quick-dialog", props: { terminal } } },
             { type: "block", content: { terminal } },
           ],
         },
@@ -78,6 +79,7 @@ export class QuickDialog {
   }
 
   closeCurrent() {
+    if (dismissChildPreview()) return;
     const state = shared(STATE);
     const target = focused();
     // A status-mod reload can forget the overlay id while its terminal still

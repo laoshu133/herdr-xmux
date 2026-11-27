@@ -6,7 +6,7 @@ import test from "node:test";
 // keyboard focus still require the actual app; these mocks never start hc.
 const source = await readFile(new URL("../mods/xmux-status/quick-dialog.js", import.meta.url), "utf8");
 const imports = source.match(/^import \{ (.+) \} from "herdr";/)[1];
-const load = new Function("api", "window", `const { ${imports}, dismissChildPreview } = api;\n` +
+const load = new Function("api", "window", `const { ${imports}, dismissChildPreview, DIALOG_TITLEBAR_HEIGHT } = api;\n` +
   source.replace(/^import .+;\n/gm, "").replace("export class", "class") + "\nreturn QuickDialog;");
 const STATE = "xmux.quick-dialog";
 const owner = "/config/app";
@@ -19,6 +19,7 @@ function fixture() {
   let reply;
   let previewOpen = false;
   const api = {
+    DIALOG_TITLEBAR_HEIGHT: 32,
     appHome: () => owner,
     checking: () => false,
     dismissChildPreview: () => {
@@ -144,6 +145,13 @@ test("Cmd+W delegates to Herdr's close key for both a tab and an overlay", () =>
     f.controller.closeCurrent();
   }
   assert.deepEqual(f.calls, [["key-action", "tab.close"], ["key-action", "tab.close"]]);
+});
+
+test("Cmd+W closes a floating child preview before acting on the underlying tab", () => {
+  const f = fixture();
+  f.openPreview();
+  f.controller.closeCurrent();
+  assert.deepEqual(f.calls, [["hide", "child-preview"]]);
 });
 
 test("hiding a background window does not undo the user's pane navigation", async () => {

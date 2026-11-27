@@ -1,29 +1,14 @@
 // XMux Sidebar: window chrome, spaces, agents, a footer and a right panel
 // toggle. A layout puts one copy per block, and `view` picks which part.
-import { View, div } from "gpui-kit";
+import { View } from "gpui-kit";
 import { props } from "herdr";
-import { forgetChildPreview, rememberChildPreview } from "./shared/child-preview.js";
 import { Spaces } from "./views/spaces.js";
 import { Agents } from "./views/agents.js";
 import { Lists } from "./views/lists.js";
 import { Footer } from "./views/footer.js";
 import { PanelToggle } from "./views/panel-toggle.js";
 import { Chrome } from "./views/chrome.js";
-
-class ChildPreview {
-  init() {
-    this.overlay = props()?.overlay;
-    if (this.overlay) rememberChildPreview(this.overlay);
-  }
-
-  close() {
-    if (this.overlay) forgetChildPreview(this.overlay);
-  }
-
-  render() {
-    return div();
-  }
-}
+import { ChildPreview } from "./views/child-preview.js";
 
 const PARTS = {
   chrome: Chrome, lists: Lists, agents: Agents, footer: Footer, "panel-toggle": PanelToggle,

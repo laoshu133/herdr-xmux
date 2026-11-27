@@ -226,6 +226,55 @@ test("sidebar aliases are stable per machine across sorting, exits and reconnect
   assert.equal(assignAgentAliases(updated, list("mi-ber/t26", "m5/t30")), updated);
 });
 
+test("the sidebar shows a kept child through its own pane and keeps unplaced descendants reachable", async () => {
+  const terminal = (address, parent) => ({ address, parent, state: "live" });
+  const parent = terminal("parent");
+  const kept = terminal("kept", "parent");
+  const grandchild = terminal("grandchild", "kept");
+  const plain = terminal("plain", "parent");
+  const other = terminal("other", "plain");
+  const { Agents } = await moduleAt("../mods/xmux-sidebar/views/agents.js", ["Agents"], {
+    agents: () => [parent, kept],
+    terminals: () => [parent, kept, grandchild, plain, other],
+    panes: () => [parent, kept, plain].map(({ address }) => ({ terminal: address })),
+    spaces: () => [],
+    shared: () => undefined,
+    focused: () => null,
+    narrow: () => false,
+    placeKeptTabs: () => {},
+    focusedChildPreview: () => null,
+    localStorage: { getItem: () => null, setItem() {} },
+  });
+  const sidebar = new Agents();
+  sidebar.init(null, { focus_handle: () => ({}), timer: { every() {} } });
+  const { children } = sidebar.readView({ timer: { after() {} } });
+  assert.deepEqual(sidebar.tree(children, "parent").map(({ t }) => t.address), ["other"]);
+  assert.deepEqual(sidebar.tree(children, "kept").map(({ t }) => t.address), ["grandchild"]);
+});
+
+test("sidebar drops send a kept terminal back only to its original parent", async () => {
+  const placed = [{ terminal: "child", tab: "c" }, { terminal: "parent", tab: "p" }];
+  const calls = [];
+  const { Agents } = await moduleAt("../mods/xmux-sidebar/views/agents.js", ["Agents"], {
+    panes: () => placed,
+    terminals: () => [{ address: "child", parent: "parent", state: "live" }],
+    spaces: () => [{ id: "space", tabs: [{ id: "p" }, { id: "c" }] }],
+    run: (...args) => calls.push(args),
+  });
+  const sidebar = new Agents();
+  const drop = terminal => {
+    sidebar.tabRows = new Map();
+    sidebar.tabDrag = {
+      id: "c", space: "space", terminal: "child", active: true,
+      target: { id: "p", terminal, park: true },
+    };
+    sidebar.commitTabDrag({ notify() {} });
+  };
+  drop("another-terminal");
+  drop("parent");
+  assert.deepEqual(calls, [["terminal.park", { terminal: "child" }]]);
+});
+
 test("attention follows sidebar order and waits for every blocked Agent to clear", async () => {
   const agents = [
     { address: "done", status: "done" },

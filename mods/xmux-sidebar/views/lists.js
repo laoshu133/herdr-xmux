@@ -42,7 +42,7 @@ export class Lists {
       .bg(t.chrome)
       .text_size(TEXT.body)
       .on_mouse_move((event, cx) => this.agents.moveTabDrag(event, cx))
-      .on_mouse_up("left", (_event, cx) => this.agents.commitTabDrag(cx))
+      .on_mouse_up("left", (event, cx) => this.agents.releaseTabDrag(event, cx))
       .on_mouse_down_out((_event, cx) => this.agents.cancelTabDrag(cx))
       .on_size_change((size, cx) => this.spaces.resized(size, cx));
     this.spaces.under = null;
@@ -101,7 +101,7 @@ export class Lists {
     // A space's agents hang from its line; a main space's worktrees come after them,
     // so its line carries on, and a worktree's own agents sit one step further in.
     // Every tab shows: a tab with agents as its agents, any other as itself.
-    const shownTab = focused()?.tab;
+    const shownTab = view.preview ? null : focused()?.tab;
     const plain = (tab) => !all.some((a) => a.tab === tab.id);
     this.spaces.under = ({ w, tree, kids }) => {
       const items = w.tabs.flatMap((tab) =>
@@ -121,7 +121,8 @@ export class Lists {
     };
     // One row lit: a space whose focused agent or tab shows beneath it leaves it to that row.
     this.spaces.quiet = (w) =>
-      all.some((a) => a.space === w.id && a.focused) || w.tabs.some((tab) => tab.id === shownTab && plain(tab));
+      Boolean(view.preview) || all.some((a) => a.space === w.id && a.focused) ||
+      w.tabs.some((tab) => tab.id === shownTab && plain(tab));
     const body = this.spaces.body(t, false);
     setAgentOrder(order);
     return root.child(body);

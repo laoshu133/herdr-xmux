@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 const root = new URL("../", import.meta.url);
 const targets = {
   "child-preview.js": ["xmux-sidebar", "xmux-status"],
+  "dialog-titlebar.js": ["xmux-sidebar", "xmux-status", "xmux-quick-dialog"],
   "provider.js": ["xmux-branch-pr", "xmux-branch-issue", "xmux-sidebar"],
   "hosting-cli.js": ["xmux-branch-pr", "xmux-branch-issue", "xmux-sidebar"],
   "merge-request.js": ["xmux-branch-pr", "xmux-sidebar"],

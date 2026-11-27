@@ -19,7 +19,8 @@ import {
 import { TEXT, Icon, IconButton, GroupHeader, Menu, MenuLabel, MenuOption, Rail, RAIL_CENTER_FROM_ROW } from "./ui.js";
 import { scrollingScrollbar } from "./scrollbar.js";
 import { automaticTabTitle, floatingTerminalTitle, tabLead } from "../shared/tab-title.js";
-import { openChildPreview } from "../shared/child-preview.js";
+import { focusedChildPreview, openChildPreview } from "../shared/child-preview.js";
+import { keepChildTerminal, keepDestination, placeKeptTabs } from "./child-preview.js";
 
 import { narrow, toggleSidebar } from "./chrome.js";
 
@@ -313,7 +314,17 @@ export class Agents {
       .gap(0)
       .items_center()
       .cursor_pointer()
-      .on_click(() => openChildPreview(k.address))
+      .on_mouse_down("left", (event, cx) => this.beginChildDrag(k.address, event, cx))
+      .on_mouse_up("left", (event, cx) => {
+        if (!this.tabDrag?.lift) return;
+        this.moveTabDrag(event, cx);
+        if (!this.tabDrag.active) return;
+        cx.stop_propagation();
+        this.commitTabDrag(cx);
+      })
+      .on_click(() => {
+        if (Date.now() >= (this.ignoreTabClickUntil ?? 0)) openChildPreview(k.address);
+      })
       .children(
         s.lines.map((line, depth) => Rail(line, CHILD_ROW.height / 2, depth === 0
           ? { width: CHILD_ROW.firstIndent, left: AGENT_ICON_CENTER }
@@ -330,7 +341,7 @@ export class Agents {
           .rounded(8)
           .items_center()
           .text_size(12.5)
-          .when(on, (el) => el.bg(t.raised))
+          .when(on, (el) => el.bg(view.preview ? t.selected : t.raised))
           .hover((s) => s.bg(t.hover))
           .when(Boolean(pic), (el) => el.child(div().mr(8).child(pic)))
           .child(div().flex_1().min_w(0).truncate()
@@ -403,6 +414,8 @@ export class Agents {
       .min_h(0)
       .px(view.collapsed ? 4 : 8)
       .overflow_y_scroll()
+      .on_mouse_move((event, cx) => this.moveTabDrag(event, cx))
+      .on_mouse_up("left", (event, cx) => this.releaseTabDrag(event, cx))
       .children(rows);
     return v_flex()
       .size_full()
@@ -423,8 +436,24 @@ export class Agents {
   readView(cx) {
     const sort = sortOf();
     const all = terminals();
+    const allPanes = panes();
+    placeKeptTabs(spaces(), allPanes, tabMoveIndex);
     const now = Date.now();
     const unordered = agents();
+    const placed = new Set(allPanes.map(pane => pane.terminal));
+    const agentAddresses = new Set(unordered.map(agent => agent.address));
+    const byAddress = new Map(all.map(terminal => [terminal.address, terminal]));
+    const children = all.filter(terminal => !placed.has(terminal.address)).map(terminal => {
+      // A plain kept tab has no agent row. Its unkept descendants can still
+      // be reached from the closest agent above it without duplicating the tab.
+      let parent = terminal.parent;
+      const seen = new Set();
+      while (placed.has(parent) && !agentAddresses.has(parent) && !seen.has(parent)) {
+        seen.add(parent);
+        parent = byAddress.get(parent)?.parent;
+      }
+      return parent === terminal.parent ? terminal : { ...terminal, parent };
+    });
     const aliases = agentAliasesByAddress(shared(AGENT_ALIASES) ?? {});
     if (unordered.some((a) => !aliases.has(a.address))) {
       cx.timer.after(0, () => {
@@ -438,7 +467,7 @@ export class Agents {
     this.prunePins(all);
 
     const byPriority = sort.id === "priority";
-    const urgency = this.urgencies(unordered, all);
+    const urgency = this.urgencies(unordered, children);
     const ordered = byPriority ? this.byUrgency(unordered, urgency) : unordered;
     const pinned = this.pins.map((p) => ordered.find((a) => a.address === p)).filter(Boolean);
     const unpinned = ordered.filter((a) => !this.pins.includes(a.address));
@@ -447,14 +476,17 @@ export class Agents {
     const groupOf = grouping(sort.id, label);
     const rest = groupOf ? gatherGroups(unpinned, groupOf, sort.id) : unpinned;
     const list = [...pinned, ...rest];
+    const focus = focused();
+    const preview = focusedChildPreview(focus);
     return {
       sort,
       count: unordered.length,
-      all,
+      children,
       now,
       byPriority,
       collapsed: narrow(),
-      shown: focused()?.agent,
+      preview,
+      shown: preview ?? focus?.agent,
       list,
       label,
       aliases,
@@ -570,7 +602,7 @@ export class Agents {
   agentWithSubs(a, view, t) {
     const alias = view.aliases.get(a.address) ?? "";
     if (view.collapsed) return [this.railRow(a, alias, t)];
-    const subs = this.tree(view.all, a.address);
+    const subs = this.tree(view.children, a.address);
     const row = this.agentRow(a, alias, subs, view, t);
     if (this.folded.has(a.address)) return [row];
     return [row, ...subs.map((s) => this.subRow(t, s, view))];
@@ -624,7 +656,7 @@ export class Agents {
       .items_center()
       .gap(9)
       .relative()
-      .when(a.focused, (el) => el.bg(t.selected))
+      .when(view.preview ? view.preview === a.address : a.focused, (el) => el.bg(t.selected))
       .when(this.tabDrag?.active && this.tabDrag.id === tab?.id, (el) => el.opacity(0.45))
       .when(this.tabDrag?.active && dragEnabled, (el) => el.cursor_grab())
       .when(!this.tabDrag?.active, (el) => el.cursor_pointer())
@@ -641,9 +673,9 @@ export class Agents {
       })
       .when(dragEnabled, (el) =>
         el
-          .on_mouse_down("left", (event, cx) => this.beginTabDrag(space, tab, event, cx))
-          .on_mouse_move((event, cx) => this.hoverTab(space, tab, event, cx))
-          .on_mouse_up("left", (event, cx) => this.finishTabDrag(space, tab, event, cx)),
+          .on_mouse_down("left", (event, cx) => this.beginTabDrag(space, tab, event, cx, a.address))
+          .on_mouse_move((event, cx) => this.hoverTab(space, tab, event, cx, a.address))
+          .on_mouse_up("left", (event, cx) => this.finishTabDrag(space, tab, event, cx, a.address)),
       )
       .when(Boolean(pic), (el) => el.child(pic))
       .child(this.agentName(a, view, t))
@@ -670,13 +702,15 @@ export class Agents {
       )
       .child(this.status(t, a, view.byPriority && !this.pins.includes(a.address)));
     if (dragEnabled && this.tabDrag?.active && this.tabDrag.target?.id === tab.id && this.tabDrag.id !== tab.id)
-      row.child(this.tabDropLine(this.tabDrag.target.after, t));
+      row.child(this.tabDropMark(this.tabDrag.target, t, a.address));
     return row;
   }
 
   // A tab with no agent, under its space in the lists view: its program and its name.
   tabRow(w, tab, lit, t) {
     const ps = panes();
+    const tabPanes = ps.filter(pane => pane.tab === tab.id);
+    const terminal = tabPanes.length === 1 ? tabPanes[0].terminal : null;
     const l = tabLead(tab, ps, focused());
     // The tab's title, as Herdr's tab bar shows it.
     const name = automaticTabTitle(tab, l, shared("pane-heads")?.[l?.pane]?.title);
@@ -699,9 +733,9 @@ export class Agents {
       .when(this.tabDrag?.active, (el) => el.cursor_grab())
       .when(!this.tabDrag?.active, (el) => el.cursor_pointer())
       .hover((s) => s.bg(t.hover))
-      .on_mouse_down("left", (event, cx) => this.beginTabDrag(w, tab, event, cx))
-      .on_mouse_move((event, cx) => this.hoverTab(w, tab, event, cx))
-      .on_mouse_up("left", (event, cx) => this.finishTabDrag(w, tab, event, cx))
+      .on_mouse_down("left", (event, cx) => this.beginTabDrag(w, tab, event, cx, terminal))
+      .on_mouse_move((event, cx) => this.hoverTab(w, tab, event, cx, terminal))
+      .on_mouse_up("left", (event, cx) => this.finishTabDrag(w, tab, event, cx, terminal))
       .on_hover((hovered, cx) => this.hoverTabRow(w, tab, hovered, cx))
       .child(pic ?? div().w(16).flex_none())
       .child(
@@ -714,19 +748,24 @@ export class Agents {
           .when(Boolean(prog) && prog !== name, (el) => el.child(this.programName(prog, t))),
       );
     if (this.tabDrag?.active && this.tabDrag.target?.id === tab.id && this.tabDrag.id !== tab.id)
-      row.child(this.tabDropLine(this.tabDrag.target.after, t));
+      row.child(this.tabDropMark(this.tabDrag.target, t, terminal));
     return row;
   }
 
-  tabDropLine(after, t) {
+  tabDropMark(target, t, terminal) {
+    if (target.park) {
+      return target.terminal === terminal
+        ? div().absolute().inset_0().rounded(6).border_1().border_color(t.accent)
+        : div();
+    }
     return div()
       .absolute()
       .left(0)
       .right(0)
       .h(2)
       .bg(t.accent)
-      .when(after, (line) => line.bottom(0))
-      .when(!after, (line) => line.top(0));
+      .when(target.after, (line) => line.bottom(0))
+      .when(!target.after, (line) => line.top(0));
   }
 
   tabDragReady(drag, point) {
@@ -736,7 +775,7 @@ export class Agents {
     );
   }
 
-  beginTabDrag(space, tab, event, cx) {
+  beginTabDrag(space, tab, event, cx, terminal = null) {
     // Keep the press on the tab row while the pointer crosses sibling rows.
     // This is the same propagation boundary used by Herdr's shipped tab bar.
     cx.stop_propagation();
@@ -744,38 +783,37 @@ export class Agents {
     this.tabDrag = {
       id: tab.id,
       space: space.id,
+      terminal,
+      parent: terminal ? terminals().find(item => item.address === terminal)?.parent : null,
       start: point,
       point,
       pressedAt: Date.now(),
       active: false,
       target: null,
     };
-    this.tabRows.clear();
-    this.rememberTabRow(space, tab, event);
+    this.rememberTabRow(space, tab, event, terminal);
     cx.notify();
   }
 
-  hoverTab(space, tab, event, cx) {
-    this.rememberTabRow(space, tab, event);
-    const drag = this.tabDrag;
-    if (!drag || drag.space !== space.id) return;
-    const point = event.position ?? drag.point;
-    drag.point = point;
-    drag.active ||= this.tabDragReady(drag, point);
-    if (!drag.active) return;
-    const bounds = event.bounds;
-    const localY = event.local_position?.y ?? 0;
-    const after = bounds ? localY > bounds.height / 2 : false;
-    const target = drag.id === tab.id ? null : { id: tab.id, after };
-    if (!drag.target || drag.target.id !== target?.id || drag.target.after !== target?.after) {
-      drag.target = target;
-      cx.notify();
-    }
+  beginChildDrag(terminal, event, cx) {
+    const destination = keepDestination(terminal);
+    if (!destination) return;
+    cx.stop_propagation();
+    this.tabDrag = {
+      terminal, space: destination.space.id, lift: true,
+      start: event.position, point: event.position, pressedAt: Date.now(),
+      active: false, target: null,
+    };
   }
 
-  rememberTabRow(space, tab, event) {
+  hoverTab(space, tab, event, cx, terminal) {
+    this.rememberTabRow(space, tab, event, terminal);
+    this.moveTabDrag(event, cx);
+  }
+
+  rememberTabRow(space, tab, event, terminal) {
     if (!event?.bounds || !space || !tab) return;
-    this.tabRows.set(tab.id, { space: space.id, bounds: event.bounds });
+    this.tabRows.set(terminal ?? tab.id, { id: tab.id, space: space.id, terminal, bounds: event.bounds });
   }
 
   // GPUI can keep mouse-move delivery on the pressed row while the pointer
@@ -789,14 +827,18 @@ export class Agents {
     drag.active ||= this.tabDragReady(drag, point);
     if (!drag.active) return;
     let target = null;
-    for (const [id, row] of this.tabRows) {
-      if (row.space !== drag.space || id === drag.id) continue;
-      const b = row.bounds;
-      if (!b || point.y < b.y || point.y > b.y + b.height) continue;
-      target = { id, after: point.y > b.y + b.height / 2 };
+    for (const row of this.tabRows.values()) {
+      if (row.id === drag.id) continue;
+      const { x, y, width, height } = row.bounds;
+      if (point.x < x || point.x > x + width || point.y < y || point.y > y + height) continue;
+      const relativeY = (point.y - y) / height;
+      const park = Boolean(drag.parent && row.terminal === drag.parent && relativeY >= 0.25 && relativeY <= 0.75);
+      if (!park && row.space !== drag.space) continue;
+      target = { id: row.id, terminal: row.terminal, after: relativeY > 0.5, park };
       break;
     }
-    if (!target || drag.target?.id !== target.id || drag.target.after !== target.after) {
+    if (drag.target?.id !== target?.id || drag.target?.terminal !== target?.terminal ||
+        drag.target?.after !== target?.after || drag.target?.park !== target?.park) {
       drag.target = target;
       cx.notify();
     }
@@ -806,7 +848,7 @@ export class Agents {
   // on the pressed row while the pointer crosses a sibling row.
   hoverTabRow(space, tab, hovered, cx) {
     const drag = this.tabDrag;
-    if (!hovered || !drag || drag.space !== space.id || drag.id === tab.id) return;
+    if (!hovered || !drag || drag.lift || drag.target?.park || drag.space !== space.id || drag.id === tab.id) return;
     drag.active = true;
     const current = spaces().find((candidate) => candidate.id === space.id);
     const from = current?.tabs?.findIndex((candidate) => candidate.id === drag.id) ?? -1;
@@ -819,12 +861,17 @@ export class Agents {
     }
   }
 
-  finishTabDrag(space, tab, event, cx) {
+  finishTabDrag(space, tab, event, cx, terminal) {
     const drag = this.tabDrag;
     if (!drag) return;
     cx.stop_propagation();
-    this.hoverTab(space, tab, event, cx);
+    this.hoverTab(space, tab, event, cx, terminal);
     this.commitTabDrag(cx, tab.id, space.id);
+  }
+
+  releaseTabDrag(event, cx) {
+    this.moveTabDrag(event, cx);
+    this.commitTabDrag(cx);
   }
 
   // The scroll viewport also receives a release when the pointer leaves the
@@ -835,14 +882,28 @@ export class Agents {
     if (!drag) return;
     this.tabDrag = null;
     this.tabRows.clear();
+    if (drag.active) this.ignoreTabClickUntil = Date.now() + 300;
     const current = spaces().find((candidate) => candidate.id === drag.space);
-    const target = current && (!spaceID || current.id === spaceID) ? drag.target : null;
-    if (current && target) {
-      const index = tabMoveIndex(current.tabs ?? [], drag.id, target.id, target.after);
-      if (index !== null) {
-        run("tab.move", { id: drag.id, index });
-        this.ignoreTabClickUntil = Date.now() + 300;
+    const target = drag.target;
+    if (target?.park) {
+      const child = terminals().find(item => item.address === drag.terminal);
+      const ps = panes();
+      if (child?.state === "live" && child.parent === target.terminal &&
+          ps.some(pane => pane.terminal === drag.terminal && pane.tab === drag.id) &&
+          ps.some(pane => pane.terminal === target.terminal && pane.tab === target.id)) {
+        run("terminal.park", { terminal: drag.terminal });
       }
+    } else if (drag.lift && target) {
+      const ps = panes();
+      const all = terminals();
+      const destination = keepDestination(drag.terminal, ps, all, spaces());
+      if (destination?.space.id === drag.space && destination.space.tabs.some(tab => tab.id === target.id) &&
+          !ps.some(pane => pane.terminal === drag.terminal) && all.some(item => item.address === drag.terminal && item.state === "live")) {
+        keepChildTerminal(drag.terminal, destination, target);
+      }
+    } else if (current && target && (!spaceID || current.id === spaceID)) {
+      const index = tabMoveIndex(current.tabs ?? [], drag.id, target.id, target.after);
+      if (index !== null) run("tab.move", { id: drag.id, index });
     } else if (!drag.active && clickedID && current) {
       run("space.select", { id: current.id });
       run("tab.select", { id: clickedID });
